@@ -4,7 +4,9 @@
   "Build the project into a standalone binary"
   (declare (ignore args))
   (let* ((config (ensure-config))
-         (name (config-value config :name)))
+         (name (config-value config :name))
+         (entry (string-upcase (or (config-value config :entry-point) "main")))
+         (package (string-upcase name)))
     (ensure-directories-exist
      (merge-pathnames "bin/" (uiop:getcwd)))
     (format t "Building ~a...~%" name)
@@ -16,8 +18,10 @@
            (lisp-eval-command
             (uiop:getcwd)
             (format nil "(asdf:load-system ~s :verbose nil)" name)
-            (lisp-save-image-form bin-path "MAIN" (string-upcase name))))
+            (lisp-save-image-form bin-path entry package)))
         (declare (ignore out))
         (if (zerop code)
             (format t "Built: bin/~a~%" name)
-            (format *error-output* "Build failed~%"))))))
+            (progn
+              (format *error-output* "Build failed~%")
+              (uiop:quit 1)))))))

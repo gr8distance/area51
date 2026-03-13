@@ -14,4 +14,5 @@
          :output :interactive)
       (declare (ignore out))
       (unless (zerop code)
-        (format *error-output* "Tests failed~%")))))
+        (format *error-output* "Tests failed~%")
+        (uiop:quit 1)))))

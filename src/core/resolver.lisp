@@ -1,13 +1,5 @@
 (in-package #:area51)
 
-(defparameter *area51-home*
-  (merge-pathnames ".area51/" (user-homedir-pathname))
-  "Global area51 directory for cached packages")
-
-(defparameter *packages-dir*
-  (merge-pathnames "packages/" *area51-home*)
-  "Directory for downloaded packages")
-
 (defparameter *builtin-systems*
   '("asdf" "uiop" "cl" "sb-posix" "sb-bsd-sockets" "sb-concurrency"
     "sb-cltl2" "sb-introspect" "sb-rotate-byte" "sb-sprof" "sb-rt"
@@ -72,28 +64,22 @@
   "Resolve a single dependency, download if needed.
    Returns the local path to the package."
   (let* ((name (getf dep :name))
-         (source (getf dep :source))
+         (url (getf dep :url))
+         (ref (getf dep :ref))
          (cache-dir (package-cache-dir name)))
     (ensure-area51-dirs)
-    (ecase source
-      (:github
-       (let ((url (getf dep :url))
-             (ref (getf dep :ref)))
-         (if (probe-file cache-dir)
-             (progn
-               (format t "  ~a (cached)~%" name)
-               cache-dir)
-             (progn
-               (format t "  ~a <- ~a~%" name url)
-               (git-clone url (namestring cache-dir) :ref ref)
-               cache-dir))))
-      (:quicklisp
-       (format t "  ~a (quicklisp - not yet supported)~%" name)
-       nil))))
+    (if (probe-file cache-dir)
+        (progn
+          (format t "  ~a (cached)~%" name)
+          cache-dir)
+        (progn
+          (format t "  ~a <- ~a~%" name url)
+          (git-clone url (namestring cache-dir) :ref ref)
+          cache-dir))))
 
 (defun resolve-all (config &key (mode :all))
   "Resolve all dependencies recursively.
-   MODE - :all, :production, or :test
+   MODE - :all or :production
    1. Resolve direct dependencies from area51.lisp
    2. Parse each package's .asd for :depends-on
    3. Recursively resolve transitive dependencies
@@ -130,18 +116,13 @@
                           ;; Check if it exists in cache
                           (let ((cached-path (find-system-in-cache td)))
                             (if cached-path
-                                ;; Found in cache, add as resolved
-                                (unless (gethash td resolved)
-                                  (push (list :name td
-                                              :source :github
-                                              :url nil)
-                                        queue)
-                                  (setf (gethash td resolved)
-                                        (list :name td
-                                              :path (namestring cached-path)
-                                              :sha (ignore-errors
-                                                     (git-rev-parse
-                                                      (namestring cached-path))))))
+                                ;; Found in cache, mark resolved directly
+                                (setf (gethash td resolved)
+                                      (list :name td
+                                            :path (namestring cached-path)
+                                            :sha (ignore-errors
+                                                   (git-rev-parse
+                                                    (namestring cached-path)))))
                                 ;; Not found anywhere
                                 (pushnew td unresolved :test #'string=))))))))
                 ;; Failed to resolve

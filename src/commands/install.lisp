@@ -1,16 +1,14 @@
 (in-package #:area51)
 
 (defun parse-install-mode (args)
-  "Parse --production or --test flag from args."
-  (cond
-    ((member "--production" args :test #'string=) :production)
-    ((member "--test" args :test #'string=) :test)
-    (t :all)))
+  "Parse --production flag from args."
+  (if (member "--production" args :test #'string=)
+      :production
+      :all))
 
 (defun cmd-install (args)
   "Install dependencies.
-   --production  only ungrouped + production deps
-   --test        all deps (same as default)"
+   --production  only ungrouped deps (no dev-deps)"
   (let* ((mode (parse-install-mode args))
          (config (ensure-config))
          (deps (config-dependencies-for config mode)))

@@ -3,69 +3,108 @@
 (defparameter *config-filename* "area51.lisp")
 (defparameter *lock-filename* "area51.lock")
 
-;;; --- DSL state (populated when area51.lisp is evaluated) ---
+(defparameter *area51-home*
+  (merge-pathnames ".area51/" (user-homedir-pathname))
+  "Global area51 directory for cached packages")
 
-(defvar *current-config* nil)
-(defvar *current-deps* nil)
-(defvar *current-group* nil)
+(defparameter *packages-dir*
+  (merge-pathnames "packages/" *area51-home*)
+  "Directory for downloaded packages")
 
-;;; --- DSL functions (called from area51.lisp) ---
+;;; --- Config reading ---
 
-(defun project (name &key (version "0.1.0") (description "") (license "MIT")
-                          (entry-point "main"))
-  "Declare project metadata."
-  (setf *current-config*
-        (list :name name
-              :version version
-              :description description
-              :license license
-              :entry-point entry-point)))
+(defun getf-by-name (plist name &optional default)
+  "Like getf but matches keys by symbol-name (case-insensitive).
+   Handles symbols that may not be in the KEYWORD package."
+  (loop for (k v) on plist by #'cddr
+        when (and (symbolp k) (string-equal (symbol-name k) name))
+          return v
+        finally (return default)))
 
-(defun dep (name &key github url ref)
-  "Declare a dependency."
-  (let* ((source (cond (github :github)
-                       (url :github)
-                       (t :github)))
-         (resolved-url (or url
-                           (when github
-                             (format nil "https://github.com/~a.git" github))))
-         (entry (list :name name :source source))
-         (entry (if resolved-url (append entry (list :url resolved-url)) entry))
-         (entry (if ref (append entry (list :ref ref)) entry))
-         (entry (if *current-group*
-                    (append entry (list :groups *current-group*))
-                    entry)))
-    (push entry *current-deps*)))
+(defun read-config-forms (path)
+  "Read all top-level S-expressions from PATH with *read-eval* nil."
+  (with-open-file (in path :direction :input)
+    (let ((*read-eval* nil)
+          (eof (gensym "EOF")))
+      (loop for form = (read in nil eof)
+            until (eq form eof)
+            collect form))))
 
-(defmacro group (groups &body body)
-  "Declare dependencies within a group."
-  `(let ((*current-group* ',groups))
-     ,@body))
+(defun parse-project-form (form)
+  "Parse (project \"name\" :key val ...) into config plist."
+  (let ((name (second form))
+        (plist (cddr form)))
+    (list :name name
+          :version (getf-by-name plist "VERSION" "0.1.0")
+          :description (getf-by-name plist "DESCRIPTION" "")
+          :license (getf-by-name plist "LICENSE" "MIT")
+          :entry-point (getf-by-name plist "ENTRY-POINT" "main"))))
 
-;;; --- Config reading/writing ---
+(defun parse-dep-entry (entry &key groups)
+  "Parse (\"name\" :github \"user/repo\" :ref \"v1\") into dep plist."
+  (let* ((name (first entry))
+         (plist (rest entry))
+         (github (getf-by-name plist "GITHUB"))
+         (url (or (getf-by-name plist "URL")
+                  (when github
+                    (format nil "https://github.com/~a.git" github))))
+         (ref (getf-by-name plist "REF"))
+         (result (list :name name)))
+    (when github (setf result (append result (list :github github))))
+    (when url (setf result (append result (list :url url))))
+    (when ref (setf result (append result (list :ref ref))))
+    (when groups (setf result (append result (list :groups groups))))
+    result))
+
+(defun parse-config-forms (forms)
+  "Convert list of S-expressions into config plist."
+  (let ((config nil)
+        (deps nil))
+    (dolist (form forms)
+      (when (and (listp form) (symbolp (car form)))
+        (let ((tag (symbol-name (car form))))
+          (cond
+            ((string-equal tag "PROJECT")
+             (setf config (parse-project-form form)))
+            ((string-equal tag "DEPS")
+             (dolist (entry (cdr form))
+               (push (parse-dep-entry entry) deps)))
+            ((string-equal tag "DEV-DEPS")
+             (dolist (entry (cdr form))
+               (push (parse-dep-entry entry :groups :dev) deps)))))))
+    (when config
+      (setf (getf config :dependencies) (nreverse deps)))
+    config))
 
 (defun read-config (&optional (dir (uiop:getcwd)))
-  "Evaluate area51.lisp as DSL and return config plist."
+  "Read area51.lisp as data and return config plist."
   (let ((path (merge-pathnames *config-filename* dir)))
     (when (probe-file path)
-      (setf *current-config* nil
-            *current-deps* nil
-            *current-group* nil)
-      (let ((cl-user (find-package :common-lisp-user)))
-        (import '(project dep group) cl-user))
-      (load path :verbose nil :print nil)
-      (when *current-config*
-        (setf (getf *current-config* :dependencies)
-              (nreverse *current-deps*)))
-      *current-config*)))
+      (parse-config-forms (read-config-forms path)))))
+
+;;; --- Config writing ---
+
+(defun write-dep-entry (stream dep)
+  "Write a single dep entry as (\"name\" :github \"user/repo\")."
+  (let ((name (getf dep :name))
+        (github (getf dep :github))
+        (url (getf dep :url))
+        (ref (getf dep :ref)))
+    (let ((*print-case* :downcase))
+      (format stream "  (~s" name)
+      (if github
+          (format stream " :github ~s" github)
+          (when url (format stream " :url ~s" url)))
+      (when ref (format stream " :ref ~s" ref))
+      (format stream ")~%"))))
 
 (defun write-config (config &optional (dir (uiop:getcwd)))
-  "Write area51.lisp as DSL form."
+  "Write area51.lisp in the declarative S-expression format."
   (let ((path (merge-pathnames *config-filename* dir)))
     (with-open-file (out path :direction :output
                               :if-exists :supersede)
       (let ((*print-case* :downcase))
-        ;; Write project declaration
+        ;; Project declaration
         (format out "(project ~s~%" (getf config :name))
         (format out "  :version ~s~%" (or (getf config :version) "0.1.0"))
         (when (and (getf config :description)
@@ -73,55 +112,33 @@
           (format out "  :description ~s~%" (getf config :description)))
         (format out "  :license ~s~%" (or (getf config :license) "MIT"))
         (format out "  :entry-point ~s)~%" (or (getf config :entry-point) "main"))
-        ;; Write dependencies
-        (let* ((deps (getf config :dependencies))
-               (ungrouped (remove-if (lambda (d) (getf d :groups)) deps))
-               (grouped (remove-if-not (lambda (d) (getf d :groups)) deps)))
-          ;; Ungrouped deps
-          (dolist (d ungrouped)
-            (format out "~%")
-            (write-dep-form out d))
-          ;; Grouped deps
-          (let ((seen-groups nil))
-            (dolist (d grouped)
-              (let ((g (getf d :groups)))
-                (unless (member g seen-groups :test #'equal)
-                  (push g seen-groups)
-                  (format out "~%(group ~s~%" g)
-                  (dolist (gd (remove-if-not
-                               (lambda (x) (equal (getf x :groups) g))
-                               grouped))
-                    (format out "  ")
-                    (write-dep-form out gd))
-                  (format out ")~%"))))))))))
-
-(defun write-dep-form (stream dep)
-  "Write a single dep form."
-  (let* ((name (getf dep :name))
-         (url (getf dep :url))
-         (ref (getf dep :ref))
-         (github (when (and url (search "github.com/" url))
-                   (let* ((path (subseq url (+ (search "github.com/" url) 11)))
-                          (path (if (uiop:string-suffix-p ".git" path)
-                                    (subseq path 0 (- (length path) 4))
-                                    path)))
-                     path))))
-    (let ((*print-case* :downcase))
-      (format stream "(dep ~s" name)
-      (if github
-          (format stream " :github ~s" github)
-          (when url (format stream " :url ~s" url)))
-      (when ref (format stream " :ref ~s" ref))
-      (format stream ")~%"))))
+        ;; Partition deps
+        (let* ((all-deps (getf config :dependencies))
+               (prod-deps (remove-if (lambda (d) (getf d :groups)) all-deps))
+               (dev-deps (remove-if-not (lambda (d) (eq (getf d :groups) :dev))
+                                        all-deps)))
+          ;; deps section
+          (when prod-deps
+            (format out "~%(deps~%")
+            (dolist (d prod-deps)
+              (write-dep-entry out d))
+            (format out ")~%"))
+          ;; dev-deps section
+          (when dev-deps
+            (format out "~%(dev-deps~%")
+            (dolist (d dev-deps)
+              (write-dep-entry out d))
+            (format out ")~%")))))))
 
 ;;; --- Lock file ---
 
 (defun read-lock (&optional (dir (uiop:getcwd)))
-  "Read lock file"
+  "Read lock file safely."
   (let ((path (merge-pathnames *lock-filename* dir)))
     (when (probe-file path)
       (with-open-file (in path :direction :input)
-        (read in)))))
+        (let ((*read-eval* nil))
+          (read in))))))
 
 (defun write-lock (lock &optional (dir (uiop:getcwd)))
   "Write lock file"
@@ -145,23 +162,17 @@
 (defun config-dependencies-for (config mode)
   "Filter dependencies by mode.
    :all        - all dependencies
-   :production - ungrouped + :production group
-   :test       - ungrouped + :production + :dev + :test"
+   :production - ungrouped only (no :dev deps)"
   (let ((deps (config-dependencies config)))
     (ecase mode
       (:all deps)
       (:production
-       (remove-if (lambda (d)
-                    (let ((groups (getf d :groups)))
-                      (and groups
-                           (not (member :production groups)))))
-                  deps))
-      (:test
-       deps))))
+       (remove-if (lambda (d) (getf d :groups)) deps)))))
 
-(defun config-add-dep (config name &key (source :github) url ref)
+(defun config-add-dep (config name &key github url ref)
   "Add a dependency to config, returns new config"
-  (let* ((entry (list :name name :source source))
+  (let* ((entry (list :name name))
+         (entry (if github (append entry (list :github github)) entry))
          (entry (if url (append entry (list :url url)) entry))
          (entry (if ref (append entry (list :ref ref)) entry))
          (deps (config-dependencies config)))
@@ -185,3 +196,77 @@
 (defun ensure-config ()
   (or (read-config)
       (error "No area51.lisp found. Run 'area51 new' first.")))
+
+;;; --- .asd file manipulation ---
+
+(defun find-project-asd (name &optional (dir (uiop:getcwd)))
+  "Find the project's .asd file."
+  (let ((path (merge-pathnames (format nil "~a.asd" name) dir)))
+    (when (probe-file path) path)))
+
+(defun dep-name-string (d)
+  "Normalize a dep entry (symbol or string) to a lowercase string."
+  (if (symbolp d) (symbol-name d) (princ-to-string d)))
+
+(defun format-deps-string (deps)
+  "Format a list of dependency names as a :depends-on string."
+  (if deps
+      (format nil ":depends-on (~{~s~^ ~})"
+              (mapcar (lambda (d)
+                        (if (symbolp d)
+                            (string-downcase (symbol-name d))
+                            d))
+                      deps))
+      ":depends-on ()"))
+
+(defun asd-read-depends (asd-path)
+  "Read .asd file and return (values content defsystem-form current-deps).
+   Returns nil if not a valid defsystem."
+  (let* ((content (uiop:read-file-string asd-path))
+         (form (with-input-from-string (s content)
+                 (let ((*read-eval* nil)) (read s)))))
+    (when (and (listp form)
+               (symbolp (car form))
+               (string-equal (symbol-name (car form)) "DEFSYSTEM"))
+      (let ((current-deps (loop for (k v) on (cddr form) by #'cddr
+                                when (and (symbolp k)
+                                          (string-equal (symbol-name k) "DEPENDS-ON"))
+                                  return v)))
+        (values content form current-deps)))))
+
+(defun asd-write-deps (asd-path content old-deps new-deps)
+  "Replace :depends-on in .asd file content and write back."
+  (let* ((old-str (format nil ":depends-on ~s" old-deps))
+         (new-str (format-deps-string new-deps))
+         (pos (search old-str content)))
+    (when pos
+      (let ((new-content (uiop:strcat
+                          (subseq content 0 pos)
+                          new-str
+                          (subseq content (+ pos (length old-str))))))
+        (with-open-file (out asd-path :direction :output
+                                      :if-exists :supersede)
+          (write-string new-content out))))))
+
+(defun asd-add-dep (asd-path dep-name)
+  "Add a dependency to the .asd file's :depends-on."
+  (multiple-value-bind (content form current-deps)
+      (asd-read-depends asd-path)
+    (declare (ignore form))
+    (when content
+      (unless (member dep-name current-deps
+                      :test #'string-equal
+                      :key #'dep-name-string)
+        (asd-write-deps asd-path content current-deps
+                        (append current-deps (list dep-name)))))))
+
+(defun asd-remove-dep (asd-path dep-name)
+  "Remove a dependency from the .asd file's :depends-on."
+  (multiple-value-bind (content form current-deps)
+      (asd-read-depends asd-path)
+    (declare (ignore form))
+    (when content
+      (let ((new-deps (remove-if (lambda (d)
+                                   (string-equal dep-name (dep-name-string d)))
+                                 current-deps)))
+        (asd-write-deps asd-path content current-deps new-deps)))))
