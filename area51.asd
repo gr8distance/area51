@@ -27,4 +27,5 @@
                    (:file "build")
                    (:file "test")
                    (:file "run")))
-                 (:file "main" :depends-on ("package" "commands"))))))
+                 (:file "main" :depends-on ("package" "commands")))))
+  :in-order-to ((test-op (test-op "area51-test"))))
