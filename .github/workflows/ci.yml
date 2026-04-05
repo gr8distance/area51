@@ -1,0 +1,45 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install SBCL
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y sbcl
+
+      - name: Install SBCL
+        if: runner.os == 'macOS'
+        run: brew install sbcl
+
+      - name: Install test dependencies
+        run: |
+          mkdir -p ~/.area51/packages
+          cd ~/.area51/packages
+          curl -sL http://beta.quicklisp.org/archive/fiveam/2024-10-12/fiveam-20241012-git.tgz | tar xz && mv fiveam-20241012-git fiveam
+          curl -sL http://beta.quicklisp.org/archive/alexandria/2024-10-12/alexandria-20241012-git.tgz | tar xz && mv alexandria-20241012-git alexandria
+          curl -sL http://beta.quicklisp.org/archive/trivial-backtrace/2023-02-14/trivial-backtrace-20230214-git.tgz | tar xz && mv trivial-backtrace-20230214-git trivial-backtrace
+          curl -sL http://beta.quicklisp.org/archive/asdf-flv/2023-10-21/asdf-flv-version-2.2.tgz | tar xz && mv asdf-flv-version-2.2 asdf-flv
+
+      - name: Run tests
+        run: |
+          sbcl --noinform --non-interactive \
+            --eval '(require :asdf)' \
+            --eval '(push (truename ".") asdf:*central-registry*)' \
+            --eval "(asdf:initialize-source-registry (list :source-registry (list :tree (namestring (merge-pathnames \".area51/packages/\" (user-homedir-pathname)))) :inherit-configuration))" \
+            --eval '(asdf:test-system "area51")'
+
+      - name: Build binary
+        run: sbcl --noinform --non-interactive --load build.lisp
