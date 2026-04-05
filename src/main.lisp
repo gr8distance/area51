@@ -44,7 +44,6 @@
                 ((string= command "build")   (cmd-build rest-args))
                 ((string= command "test")    (cmd-test rest-args))
                 ((string= command "run")     (cmd-run rest-args))
-                ((string= command "version")  (print-version))
                 ((string= command "-v")      (print-version))
                 ((string= command "help")    (print-usage))
                 ((string= command "--help")  (print-usage))
