@@ -12,13 +12,25 @@ area51 run
 
 ## Install
 
-Requires [SBCL](http://www.sbcl.org/).
+Requires [SBCL](http://www.sbcl.org/) and git.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/gr8distance/area51/main/install.sh | bash
+```
+
+Or manually:
 
 ```bash
 git clone https://github.com/gr8distance/area51.git
 cd area51
 sbcl --non-interactive --load build.lisp
 cp bin/area51 /usr/local/bin/  # or anywhere on your PATH
+```
+
+Set `INSTALL_DIR` to change the install location:
+
+```bash
+INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/gr8distance/area51/main/install.sh | bash
 ```
 
 ## Commands
