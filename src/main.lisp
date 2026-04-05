@@ -1,5 +1,10 @@
 (in-package #:area51)
 
+(defparameter *version* "0.1.0")
+
+(defun print-version ()
+  (format t "area51 ~a~%" *version*))
+
 (defun print-usage ()
   (format t "area51 - Common Lisp Package Manager~%")
   (format t "~%")
@@ -39,6 +44,8 @@
                 ((string= command "build")   (cmd-build rest-args))
                 ((string= command "test")    (cmd-test rest-args))
                 ((string= command "run")     (cmd-run rest-args))
+                ((string= command "version")  (print-version))
+                ((string= command "-v")      (print-version))
                 ((string= command "help")    (print-usage))
                 ((string= command "--help")  (print-usage))
                 (t
