@@ -60,29 +60,49 @@
 
 ;;; --- Dependency resolution ---
 
+(defun dep-is-github-p (dep)
+  "Check if a dep has a GitHub/URL source."
+  (or (getf dep :url) (getf dep :github)))
+
 (defun resolve-dep (dep)
   "Resolve a single dependency, download if needed.
-   Returns the local path to the package."
+   Deps with :url or :github → git clone.
+   Deps without → Quicklisp."
   (let* ((name (getf dep :name))
          (url (getf dep :url))
          (ref (getf dep :ref))
          (cache-dir (package-cache-dir name)))
     (ensure-area51-dirs)
-    (if (probe-file cache-dir)
-        (progn
-          (format t "  ~a (cached)~%" name)
-          cache-dir)
-        (progn
-          (format t "  ~a <- ~a~%" name url)
-          (git-clone url (namestring cache-dir) :ref ref)
-          cache-dir))))
+    (if (dep-is-github-p dep)
+        ;; GitHub source
+        (if (probe-file cache-dir)
+            (progn
+              (format t "  ~a (cached)~%" name)
+              cache-dir)
+            (progn
+              (format t "  ~a <- ~a~%" name url)
+              (git-clone url (namestring cache-dir) :ref ref)
+              cache-dir))
+        ;; Quicklisp source
+        (if (probe-file cache-dir)
+            (progn
+              (format t "  ~a (cached)~%" name)
+              cache-dir)
+            (progn
+              (format t "  ~a <- quicklisp~%" name)
+              (let ((path (download-quicklisp-package name)))
+                (or path
+                    (progn
+                      (format *error-output*
+                              "  ~a not found in Quicklisp index~%" name)
+                      nil))))))))
 
 (defun resolve-all (config &key (mode :all))
   "Resolve all dependencies recursively.
    MODE - :all or :production
    1. Resolve direct dependencies from area51.lisp
    2. Parse each package's .asd for :depends-on
-   3. Recursively resolve transitive dependencies
+   3. Recursively resolve transitive dependencies (fallback to Quicklisp)
    4. Report unresolved dependencies"
   (let ((deps (config-dependencies-for config mode))
         (resolved (make-hash-table :test 'equal))
@@ -105,6 +125,7 @@
                   (setf (gethash name resolved)
                         (list :name name
                               :path (namestring path)
+                              :source (if (dep-is-github-p dep) :github :quicklisp)
                               :sha (ignore-errors
                                      (git-rev-parse (namestring path)))))
                   ;; Find transitive dependencies
@@ -116,22 +137,24 @@
                           ;; Check if it exists in cache
                           (let ((cached-path (find-system-in-cache td)))
                             (if cached-path
-                                ;; Found in cache, mark resolved directly
+                                ;; Found in cache
                                 (setf (gethash td resolved)
                                       (list :name td
                                             :path (namestring cached-path)
+                                            :source :cached
                                             :sha (ignore-errors
                                                    (git-rev-parse
                                                     (namestring cached-path)))))
-                                ;; Not found anywhere
-                                (pushnew td unresolved :test #'string=))))))))
+                                ;; Not in cache — queue for Quicklisp fallback
+                                (push (list :name td)
+                                      queue))))))))
                 ;; Failed to resolve
                 (pushnew name unresolved :test #'string=))))))
     ;; Report unresolved
     (when unresolved
       (format *error-output* "~%Unresolved dependencies:~%")
       (dolist (name (sort unresolved #'string<))
-        (format *error-output* "  ~a  (add with: area51 add ~a --github <user/repo>)~%" name name)))
+        (format *error-output* "  ~a  (not found in Quicklisp or GitHub)~%" name)))
     ;; Return resolved list
     (let ((results nil))
       (maphash (lambda (k v)

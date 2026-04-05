@@ -13,7 +13,8 @@
                   :components
                   ((:file "shell")
                    (:file "lisp-impl" :depends-on ("shell"))
-                   (:file "resolver" :depends-on ("shell"))))
+                   (:file "resolver" :depends-on ("shell"))
+                   (:file "quicklisp" :depends-on ("shell" "resolver"))))
                  (:module "commands"
                   :depends-on ("package" "config" "core")
                   :components

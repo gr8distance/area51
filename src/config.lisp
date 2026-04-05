@@ -41,7 +41,8 @@
           :entry-point (getf-by-name plist "ENTRY-POINT" "main"))))
 
 (defun parse-dep-entry (entry &key groups)
-  "Parse (\"name\" :github \"user/repo\" :ref \"v1\") into dep plist."
+  "Parse (\"name\" :github \"user/repo\" :ref \"v1\") into dep plist.
+   No :github or :url → Quicklisp source."
   (let* ((name (first entry))
          (plist (rest entry))
          (github (getf-by-name plist "GITHUB"))
@@ -85,18 +86,26 @@
 ;;; --- Config writing ---
 
 (defun write-dep-entry (stream dep)
-  "Write a single dep entry as (\"name\" :github \"user/repo\")."
+  "Write a single dep entry as (\"name\" :github \"user/repo\") or just (\"name\") for Quicklisp."
   (let ((name (getf dep :name))
         (github (getf dep :github))
         (url (getf dep :url))
         (ref (getf dep :ref)))
     (let ((*print-case* :downcase))
-      (format stream "  (~s" name)
-      (if github
-          (format stream " :github ~s" github)
-          (when url (format stream " :url ~s" url)))
-      (when ref (format stream " :ref ~s" ref))
-      (format stream ")~%"))))
+      (cond
+        ;; Quicklisp: just ("name")
+        ((and (null github) (null url))
+         (format stream "  (~s)~%" name))
+        ;; GitHub shorthand
+        (github
+         (format stream "  (~s :github ~s" name github)
+         (when ref (format stream " :ref ~s" ref))
+         (format stream ")~%"))
+        ;; Raw URL
+        (url
+         (format stream "  (~s :url ~s" name url)
+         (when ref (format stream " :ref ~s" ref))
+         (format stream ")~%"))))))
 
 (defun write-config (config &optional (dir (uiop:getcwd)))
   "Write area51.lisp in the declarative S-expression format."
@@ -116,7 +125,7 @@
         (let* ((all-deps (getf config :dependencies))
                (prod-deps (remove-if (lambda (d) (getf d :groups)) all-deps))
                (dev-deps (remove-if-not (lambda (d) (eq (getf d :groups) :dev))
-                                        all-deps)))
+                                         all-deps)))
           ;; deps section
           (when prod-deps
             (format out "~%(deps~%")

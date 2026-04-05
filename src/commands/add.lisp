@@ -2,6 +2,7 @@
 
 (defun parse-package-source (args)
   "Parse package source from arguments.
+   No flags → Quicklisp. --github or --url → GitHub.
    Returns (values github url ref)."
   (let ((github nil)
         (url nil)

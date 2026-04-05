@@ -16,6 +16,9 @@
         (format t "No dependencies to install~%")
         (progn
           (format t "Installing ~d package~:p (~a)...~%" (length deps) mode)
-          (let ((resolved (resolve-all config :mode mode)))
-            (write-lock (list :packages resolved))
-            (format t "Done. Lock file written.~%"))))))
+          (let* ((dist-version (ensure-quicklisp-index))
+                 (resolved (resolve-all config :mode mode)))
+            (write-lock (list :dist-version dist-version
+                              :packages resolved))
+            (format t "~%Resolved ~d package~:p. Lock file written.~%"
+                    (length resolved)))))))
