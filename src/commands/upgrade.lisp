@@ -2,8 +2,8 @@
 
 (defparameter *repo-url* "https://github.com/gr8distance/area51.git")
 
-(defun cmd-self-update (args)
-  "Update area51 itself to the latest version."
+(defun cmd-upgrade (args)
+  "Upgrade area51 itself to the latest version."
   (declare (ignore args))
   (let* ((build-dir (format nil "~aarea51-update/"
                             (uiop:temporary-directory)))

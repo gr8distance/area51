@@ -24,7 +24,7 @@
                    (:file "install")
                    (:file "list")
                    (:file "clean")
-                   (:file "self-update")
+                   (:file "upgrade")
                    (:file "build")
                    (:file "test")
                    (:file "run")))
