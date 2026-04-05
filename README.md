@@ -1,6 +1,6 @@
 # area51
 
-A modern package manager for Common Lisp. Works like npm/mix/cargo — no Quicklisp setup required at runtime.
+A package manager for Common Lisp. Works like npm/mix/cargo — no Quicklisp setup required at runtime.
 
 ```bash
 area51 new my-app
