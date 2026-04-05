@@ -22,6 +22,8 @@
                    (:file "add")
                    (:file "remove")
                    (:file "install")
+                   (:file "list")
+                   (:file "clean")
                    (:file "build")
                    (:file "test")
                    (:file "run")))

@@ -1,0 +1,25 @@
+(in-package #:area51)
+
+(defun cmd-list (args)
+  "List project dependencies and their status."
+  (declare (ignore args))
+  (let* ((config (ensure-config))
+         (deps (config-dependencies config))
+         (lock (read-lock)))
+    (if (null deps)
+        (format t "No dependencies.~%")
+        (let ((locked-packages (getf lock :packages)))
+          (format t "~a (~a)~%~%"
+                  (config-value config :name)
+                  (or (config-value config :version) "0.1.0"))
+          (dolist (dep deps)
+            (let* ((name (getf dep :name))
+                   (github (getf dep :github))
+                   (locked (find name locked-packages
+                                 :key (lambda (p) (getf p :name))
+                                 :test #'string=))
+                   (source (cond (github (format nil "github:~a" github))
+                                 (t "quicklisp")))
+                   (status (if locked "installed" "not installed")))
+              (format t "  ~a (~a) [~a]~%" name source status)))
+          (format t "~%~d package~:p~%" (length deps))))))
