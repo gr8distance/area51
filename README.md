@@ -41,6 +41,8 @@ INSTALL_DIR=~/.local/bin curl -fsSL https://raw.githubusercontent.com/gr8distanc
 | `area51 add <pkg> [options]` | Add a dependency |
 | `area51 remove <pkg>` | Remove a dependency |
 | `area51 install` | Install all dependencies |
+| `area51 list` | List dependencies |
+| `area51 clean` | Clean package cache |
 | `area51 build` | Build standalone binary |
 | `area51 test` | Run tests |
 | `area51 run` | Run the project |
@@ -60,7 +62,7 @@ area51 add some-lib --github user/repo --ref v1.0
 
 ## area51.lisp
 
-Project configuration is a Lisp DSL:
+Project configuration as S-expressions:
 
 ```lisp
 (project "my-app"
@@ -68,20 +70,66 @@ Project configuration is a Lisp DSL:
   :license "MIT"
   :entry-point "main")
 
-(dep "alexandria")
-(dep "cl-ppcre")
-(dep "my-lib" :github "user/my-lib")
+(deps
+  ("alexandria")
+  ("cl-ppcre")
+  ("my-lib" :github "user/my-lib"))
 
-(group (:dev :test)
-  (dep "fiveam" :github "lispci/fiveam"))
+(dev-deps
+  ("fiveam" :github "lispci/fiveam"))
 ```
 
 ### Install with group filtering
 
 ```bash
 area51 install                # all dependencies
-area51 install --production   # ungrouped + :production only
+area51 install --production   # deps only (no dev-deps)
 ```
+
+## area51.lock
+
+`area51 install` generates a lock file that pins exact versions for reproducible builds:
+
+```lisp
+(:dist-version "2026-01-01"
+ :packages
+ ((:name "alexandria"
+   :path "/home/user/.area51/packages/alexandria/"
+   :source :quicklisp
+   :sha nil)
+  (:name "cl-ppcre"
+   :path "/home/user/.area51/packages/cl-ppcre/"
+   :source :quicklisp
+   :sha nil)
+  (:name "my-lib"
+   :path "/home/user/.area51/packages/my-lib/"
+   :source :github
+   :sha "a1b2c3d4e5f6...")))
+```
+
+Quicklisp packages are pinned to the dist version. GitHub packages are pinned to the exact commit SHA. Commit `area51.lock` to version control for reproducible builds across machines.
+
+## Dependency resolution
+
+area51 resolves the full dependency tree automatically:
+
+1. Direct dependencies from `area51.lisp` are downloaded (Quicklisp or GitHub)
+2. Each package's `.asd` file is parsed for `:depends-on`
+3. Transitive dependencies are resolved recursively
+4. If a transitive dep isn't in the cache, area51 falls back to Quicklisp automatically
+
+This means you only need to declare your direct dependencies — area51 handles the rest.
+
+```
+my-app
+ ├── cl-ppcre (declared in area51.lisp)
+ │    ├── flexi-streams (auto-resolved from .asd)
+ │    │    └── trivial-gray-streams (auto-resolved)
+ │    └── cl-unicode (auto-resolved from .asd)
+ └── alexandria (declared in area51.lisp)
+```
+
+Built-in systems (`asdf`, `uiop`, `sb-*`) are recognized and skipped. Circular dependencies are detected via the resolved set — a package is never processed twice.
 
 ## How it works
 
@@ -89,8 +137,6 @@ area51 install --production   # ungrouped + :production only
 - **area51 install** downloads packages to `~/.area51/packages/`
   - Quicklisp packages: fetched from the Quicklisp dist as tarballs
   - GitHub packages: cloned via git
-  - Transitive dependencies are resolved automatically by parsing `.asd` files
-  - Unknown transitive deps fall back to Quicklisp automatically
 - **area51.lock** pins exact versions and SHAs for reproducible builds
 - `.asd` `:depends-on` is auto-updated on `add`/`remove`
 - Built on ASDF — no external dependencies, no Quicklisp runtime needed
