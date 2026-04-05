@@ -74,17 +74,9 @@ Project configuration as S-expressions:
   ("alexandria")
   ("cl-ppcre")
   ("my-lib" :github "user/my-lib"))
-
-(dev-deps
-  ("fiveam" :github "lispci/fiveam"))
 ```
 
-### Install with group filtering
-
-```bash
-area51 install                # all dependencies
-area51 install --production   # deps only (no dev-deps)
-```
+Test dependencies belong in a separate `.asd` file (e.g. `my-app-test.asd`), following the ASDF convention.
 
 ## area51.lock
 

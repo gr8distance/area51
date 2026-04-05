@@ -97,14 +97,13 @@
                               "  ~a not found in Quicklisp index~%" name)
                       nil))))))))
 
-(defun resolve-all (config &key (mode :all))
+(defun resolve-all (config)
   "Resolve all dependencies recursively.
-   MODE - :all or :production
    1. Resolve direct dependencies from area51.lisp
    2. Parse each package's .asd for :depends-on
    3. Recursively resolve transitive dependencies (fallback to Quicklisp)
    4. Report unresolved dependencies"
-  (let ((deps (config-dependencies-for config mode))
+  (let ((deps (config-dependencies config))
         (resolved (make-hash-table :test 'equal))
         (unresolved nil)
         (queue nil))

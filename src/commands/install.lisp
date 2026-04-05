@@ -1,23 +1,16 @@
 (in-package #:area51)
 
-(defun parse-install-mode (args)
-  "Parse --production flag from args."
-  (if (member "--production" args :test #'string=)
-      :production
-      :all))
-
 (defun cmd-install (args)
-  "Install dependencies.
-   --production  only ungrouped deps (no dev-deps)"
-  (let* ((mode (parse-install-mode args))
-         (config (ensure-config))
-         (deps (config-dependencies-for config mode)))
+  "Install all dependencies."
+  (declare (ignore args))
+  (let* ((config (ensure-config))
+         (deps (config-dependencies config)))
     (if (null deps)
         (format t "No dependencies to install~%")
         (progn
-          (format t "Installing ~d package~:p (~a)...~%" (length deps) mode)
+          (format t "Installing ~d package~:p...~%" (length deps))
           (let* ((dist-version (ensure-quicklisp-index))
-                 (resolved (resolve-all config :mode mode)))
+                 (resolved (resolve-all config)))
             (write-lock (list :dist-version dist-version
                               :packages resolved))
             (format t "~%Resolved ~d package~:p. Lock file written.~%"

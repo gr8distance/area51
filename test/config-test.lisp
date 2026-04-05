@@ -52,18 +52,6 @@
          (dep (first (getf config :dependencies))))
     (is (string= "v1.0" (getf dep :ref)))))
 
-(test parse-dev-deps
-  "dev-deps get :groups :dev."
-  (let* ((config (area51::parse-config-forms
-                  '((project "app")
-                    (deps ("alexandria"))
-                    (dev-deps ("fiveam" :github "lispci/fiveam")))))
-         (deps (getf config :dependencies)))
-    (is (= 2 (length deps)))
-    (let ((dev-dep (find "fiveam" deps :key (lambda (d) (getf d :name))
-                                       :test #'string=)))
-      (is (eq :dev (getf dev-dep :groups))))))
-
 ;;; --- config-add-dep / config-remove-dep ---
 
 (test add-dep-to-config
@@ -88,23 +76,6 @@
          (new (area51::config-remove-dep config "alexandria")))
     (is (= 1 (length (getf new :dependencies))))
     (is (string= "cl-ppcre" (getf (first (getf new :dependencies)) :name)))))
-
-;;; --- config-dependencies-for ---
-
-(test deps-for-all
-  "Mode :all returns everything."
-  (let ((config (list :name "app"
-                      :dependencies (list (list :name "a")
-                                          (list :name "b" :groups :dev)))))
-    (is (= 2 (length (area51::config-dependencies-for config :all))))))
-
-(test deps-for-production
-  "Mode :production excludes :dev."
-  (let ((config (list :name "app"
-                      :dependencies (list (list :name "a")
-                                          (list :name "b" :groups :dev)))))
-    (is (= 1 (length (area51::config-dependencies-for config :production))))
-    (is (string= "a" (getf (first (area51::config-dependencies-for config :production)) :name)))))
 
 ;;; --- write/read roundtrip ---
 

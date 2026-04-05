@@ -40,7 +40,7 @@
           :license (getf-by-name plist "LICENSE" "MIT")
           :entry-point (getf-by-name plist "ENTRY-POINT" "main"))))
 
-(defun parse-dep-entry (entry &key groups)
+(defun parse-dep-entry (entry)
   "Parse (\"name\" :github \"user/repo\" :ref \"v1\") into dep plist.
    No :github or :url → Quicklisp source."
   (let* ((name (first entry))
@@ -54,7 +54,6 @@
     (when github (setf result (append result (list :github github))))
     (when url (setf result (append result (list :url url))))
     (when ref (setf result (append result (list :ref ref))))
-    (when groups (setf result (append result (list :groups groups))))
     result))
 
 (defun parse-config-forms (forms)
@@ -69,10 +68,7 @@
              (setf config (parse-project-form form)))
             ((string-equal tag "DEPS")
              (dolist (entry (cdr form))
-               (push (parse-dep-entry entry) deps)))
-            ((string-equal tag "DEV-DEPS")
-             (dolist (entry (cdr form))
-               (push (parse-dep-entry entry :groups :dev) deps)))))))
+               (push (parse-dep-entry entry) deps)))))))
     (when config
       (setf (getf config :dependencies) (nreverse deps)))
     config))
@@ -121,21 +117,11 @@
           (format out "  :description ~s~%" (getf config :description)))
         (format out "  :license ~s~%" (or (getf config :license) "MIT"))
         (format out "  :entry-point ~s)~%" (or (getf config :entry-point) "main"))
-        ;; Partition deps
-        (let* ((all-deps (getf config :dependencies))
-               (prod-deps (remove-if (lambda (d) (getf d :groups)) all-deps))
-               (dev-deps (remove-if-not (lambda (d) (eq (getf d :groups) :dev))
-                                         all-deps)))
-          ;; deps section
-          (when prod-deps
+        ;; Dependencies
+        (let ((deps (getf config :dependencies)))
+          (when deps
             (format out "~%(deps~%")
-            (dolist (d prod-deps)
-              (write-dep-entry out d))
-            (format out ")~%"))
-          ;; dev-deps section
-          (when dev-deps
-            (format out "~%(dev-deps~%")
-            (dolist (d dev-deps)
+            (dolist (d deps)
               (write-dep-entry out d))
             (format out ")~%")))))))
 
@@ -169,14 +155,9 @@
   (getf config :dependencies))
 
 (defun config-dependencies-for (config mode)
-  "Filter dependencies by mode.
-   :all        - all dependencies
-   :production - ungrouped only (no :dev deps)"
-  (let ((deps (config-dependencies config)))
-    (ecase mode
-      (:all deps)
-      (:production
-       (remove-if (lambda (d) (getf d :groups)) deps)))))
+  "Return dependencies. MODE is accepted for compatibility but ignored."
+  (declare (ignore mode))
+  (config-dependencies config))
 
 (defun config-add-dep (config name &key github url ref)
   "Add a dependency to config, returns new config"
