@@ -19,6 +19,10 @@
         "--eval" (asdf-setup-form)
         "--eval" "(push *default-pathname-defaults* asdf:*central-registry*)"
         "--eval" (format nil "(asdf:load-system ~s :verbose nil)" project-name)
+        ;; Drop into the project's package so SLY/SLIME REPL connections
+        ;; start there instead of COMMON-LISP-USER. If the project happens
+        ;; to name its package differently, stay in CL-USER silently.
+        "--eval" (format nil "(ignore-errors (in-package :~a))" project-name)
         "--eval" (concatenate 'string
                               "(handler-case (asdf:load-system :slynk :verbose nil) "
                               "(error (e) "
