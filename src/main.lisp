@@ -1,6 +1,6 @@
 (in-package #:area51)
 
-(defparameter *version* "0.3.0")
+(defparameter *version* "0.3.5")
 
 (defun print-version ()
   (format t "area51 ~a~%" *version*))
@@ -18,6 +18,7 @@
   (format t "  build                Build standalone binary~%")
   (format t "  test                 Run tests~%")
   (format t "  run                  Run the project~%")
+  (format t "  repl [--port N]      Start a slynk server for SLY/SLIME connect~%")
   (format t "  list                 List dependencies~%")
   (format t "  clean                Clean package cache~%")
   (format t "  upgrade              Upgrade area51 itself~%")
@@ -47,6 +48,7 @@
                 ((string= command "build")   (cmd-build rest-args))
                 ((string= command "test")    (cmd-test rest-args))
                 ((string= command "run")     (cmd-run rest-args))
+                ((string= command "repl")    (cmd-repl rest-args))
                 ((string= command "list")    (cmd-list rest-args))
                 ((string= command "clean")   (cmd-clean rest-args))
                 ((string= command "upgrade") (cmd-upgrade rest-args))

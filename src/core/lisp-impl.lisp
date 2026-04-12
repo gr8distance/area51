@@ -7,13 +7,34 @@
   (or (uiop:getenv "AREA51_LISP") "sbcl")
   "Lisp implementation to use. Override with AREA51_LISP env var.")
 
+(defun package-paths-from-lock ()
+  "Return list of package :path strings from the current project's area51.lock.
+   Returns nil if no lock file exists."
+  (let ((lock (read-lock)))
+    (when lock
+      (loop for pkg in (getf lock :packages)
+            for path = (getf pkg :path)
+            when path collect path))))
+
 (defun asdf-setup-form ()
-  "Generate a form that configures ASDF to find installed packages."
-  (format nil "(asdf:initialize-source-registry ~
-               (list :source-registry ~
-                 (list :tree ~s) ~
-                 :inherit-configuration))"
-          (namestring *packages-dir*)))
+  "Generate a form that configures ASDF to find this project's locked dependencies.
+   Uses per-package :directory entries from area51.lock for true per-project
+   isolation. Falls back to a :tree over the global packages dir when no lock
+   file is available (e.g. during install)."
+  (let ((paths (package-paths-from-lock)))
+    (if paths
+        (with-output-to-string (out)
+          (write-string
+           "(asdf:initialize-source-registry (list :source-registry "
+           out)
+          (dolist (p paths)
+            (format out "(list :directory ~s) " p))
+          (write-string ":inherit-configuration))" out))
+        (format nil "(asdf:initialize-source-registry ~
+                     (list :source-registry ~
+                       (list :tree ~s) ~
+                       :inherit-configuration))"
+                (namestring *packages-dir*)))))
 
 (defun lisp-eval-command (dir &rest eval-forms)
   "Generate a shell command to evaluate forms in a Lisp subprocess."
