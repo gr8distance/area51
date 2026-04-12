@@ -23,7 +23,21 @@
       (format nil "(asdf:load-system ~s :verbose nil)" name)
       "(handler-case (asdf:load-system :slynk :verbose nil) (error (e) (format *error-output* \"area51: could not load slynk: ~a~%area51: install slynk via Quicklisp or add it as a dep.~%\" e) (uiop:quit 1)))"
       (format nil
-              "(funcall (find-symbol \"CREATE-SERVER\" :slynk) :port ~d :dont-close t)"
-              port)
-      "(loop (sleep 3600))")
+              "(handler-case ~
+                 (funcall (find-symbol \"CREATE-SERVER\" :slynk) ~
+                          :port ~d :dont-close t) ~
+                 (sb-bsd-sockets:address-in-use-error () ~
+                   (format *error-output* ~
+                           \"area51: port ~d is already in use.~~%~
+                            area51: pass --port N to pick another port.~~%\") ~
+                   (uiop:quit 1)))"
+              port port)
+      (format nil
+              "(handler-case (loop (sleep 3600)) ~
+                 (sb-sys:interactive-interrupt () ~
+                   (format t \"~~&area51: stopping slynk...~~%\") ~
+                   (ignore-errors ~
+                     (funcall (find-symbol \"STOP-SERVER\" :slynk) ~d)) ~
+                   (uiop:quit 0)))"
+              port))
      :output :interactive)))
