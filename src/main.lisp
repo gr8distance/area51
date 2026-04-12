@@ -1,6 +1,6 @@
 (in-package #:area51)
 
-(defparameter *version* "0.3.0")
+(defparameter *version* "0.3.1")
 
 (defun print-version ()
   (format t "area51 ~a~%" *version*))
