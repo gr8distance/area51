@@ -225,18 +225,23 @@
         (values content form current-deps)))))
 
 (defun asd-write-deps (asd-path content old-deps new-deps)
-  "Replace :depends-on in .asd file content and write back."
-  (let* ((old-str (format nil ":depends-on ~s" old-deps))
+  "Replace :depends-on in .asd file content and write back.
+   Uses format-deps-string for both old and new so the empty case
+   ('()' in the source, NIL when read back) round-trips correctly."
+  (let* ((old-str (format-deps-string old-deps))
          (new-str (format-deps-string new-deps))
          (pos (search old-str content)))
-    (when pos
-      (let ((new-content (uiop:strcat
-                          (subseq content 0 pos)
-                          new-str
-                          (subseq content (+ pos (length old-str))))))
-        (with-open-file (out asd-path :direction :output
-                                      :if-exists :supersede)
-          (write-string new-content out))))))
+    (if pos
+        (let ((new-content (uiop:strcat
+                            (subseq content 0 pos)
+                            new-str
+                            (subseq content (+ pos (length old-str))))))
+          (with-open-file (out asd-path :direction :output
+                                        :if-exists :supersede)
+            (write-string new-content out)))
+        (format *error-output*
+                "Warning: could not locate ~s in ~a; .asd left unchanged.~%"
+                old-str asd-path))))
 
 (defun asd-add-dep (asd-path dep-name)
   "Add a dependency to the .asd file's :depends-on."
