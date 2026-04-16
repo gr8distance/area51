@@ -18,9 +18,11 @@
 
 (defun asdf-setup-form ()
   "Generate a form that configures ASDF to find this project's locked dependencies.
-   Uses per-package :directory entries from area51.lock for true per-project
-   isolation. Falls back to a :tree over the global packages dir when no lock
-   file is available (e.g. during install)."
+   Uses per-package :tree entries from area51.lock for true per-project
+   isolation. :tree (not :directory) is used because some packages ship
+   with sub-systems in subdirectories (e.g. mgl-pax/autoload/autoload.asd).
+   Falls back to a :tree over the global packages dir when no lock file
+   is available (e.g. during install)."
   (let ((paths (package-paths-from-lock)))
     (if paths
         (with-output-to-string (out)
@@ -28,7 +30,7 @@
            "(asdf:initialize-source-registry (list :source-registry "
            out)
           (dolist (p paths)
-            (format out "(list :directory ~s) " p))
+            (format out "(list :tree ~s) " p))
           (write-string ":inherit-configuration))" out))
         (format nil "(asdf:initialize-source-registry ~
                      (list :source-registry ~
