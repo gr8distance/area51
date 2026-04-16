@@ -26,8 +26,9 @@
 ;;; --- .asd parsing ---
 
 (defun find-asd-files (dir)
-  "Find all .asd files in a directory (non-recursive)."
-  (let ((pattern (merge-pathnames "*.asd" dir)))
+  "Find all .asd files in a directory tree (recursive).
+Some packages (e.g. mgl-pax) ship with sub-systems in subdirectories."
+  (let ((pattern (merge-pathnames "**/*.asd" dir)))
     (directory pattern)))
 
 (defun skip-sharp-dot-reader (stream subchar arg)
