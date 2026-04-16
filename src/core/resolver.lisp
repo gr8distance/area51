@@ -30,13 +30,28 @@
   (let ((pattern (merge-pathnames "*.asd" dir)))
     (directory pattern)))
 
+(defun skip-sharp-dot-reader (stream subchar arg)
+  "Custom reader for #. that reads the following form as data and discards it.
+Used to parse .asd files safely without evaluating #. forms (e.g. :long-description
+that reads README at load time)."
+  (declare (ignore subchar arg))
+  (let ((*read-suppress* t))
+    (read stream t nil t))
+  nil)
+
+(defun make-asd-readtable ()
+  "Readtable for parsing .asd files: #. forms are skipped instead of evaluated."
+  (let ((rt (copy-readtable nil)))
+    (set-dispatch-macro-character #\# #\. #'skip-sharp-dot-reader rt)
+    rt))
+
 (defun parse-asd-depends (asd-path)
   "Extract :depends-on from ALL defsystem forms in a .asd file.
 Subsystem names (containing /) are converted to their base system name."
   (handler-case
       (let ((all-deps nil))
         (with-open-file (in asd-path :direction :input)
-          (let ((*read-eval* nil)
+          (let ((*readtable* (make-asd-readtable))
                 (*package* (find-package :cl-user)))
             (loop for form = (read in nil :eof)
                   until (eq form :eof)
