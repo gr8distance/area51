@@ -1,6 +1,6 @@
 (in-package #:area51)
 
-(defparameter *version* "0.4.0")
+(defparameter *version* "0.4.1")
 
 (defun print-version ()
   (format t "area51 ~a~%" *version*))
@@ -15,7 +15,7 @@
   (format t "  add <pkg> [options]  Add a dependency~%")
   (format t "  remove <pkg>         Remove a dependency~%")
   (format t "  install              Install dependencies~%")
-  (format t "  build                Build standalone binary~%")
+  (format t "  build [--verbose]    Build standalone binary~%")
   (format t "  test                 Run tests~%")
   (format t "  run                  Run the project~%")
   (format t "  repl [--port N]      Start a slynk server for SLY/SLIME connect~%")
