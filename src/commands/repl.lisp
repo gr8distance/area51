@@ -50,7 +50,7 @@
                     :error-output :interactive)))
       (unwind-protect
           (handler-case
-              (uiop:wait-process process)
+              (quit-unless-zero (uiop:wait-process process))
             (sb-sys:interactive-interrupt ()
               (format t "~&area51: shutting down...~%")
               ;; The child installs a handler for SIGINT that calls

@@ -28,10 +28,10 @@ jobs:
         run: |
           mkdir -p ~/.area51/packages
           cd ~/.area51/packages
-          curl -sL http://beta.quicklisp.org/archive/fiveam/2024-10-12/fiveam-20241012-git.tgz | tar xz && mv fiveam-20241012-git fiveam
-          curl -sL http://beta.quicklisp.org/archive/alexandria/2024-10-12/alexandria-20241012-git.tgz | tar xz && mv alexandria-20241012-git alexandria
-          curl -sL http://beta.quicklisp.org/archive/trivial-backtrace/2023-02-14/trivial-backtrace-20230214-git.tgz | tar xz && mv trivial-backtrace-20230214-git trivial-backtrace
-          curl -sL http://beta.quicklisp.org/archive/asdf-flv/2023-10-21/asdf-flv-version-2.2.tgz | tar xz && mv asdf-flv-version-2.2 asdf-flv
+          curl -fsSL https://beta.quicklisp.org/archive/fiveam/2024-10-12/fiveam-20241012-git.tgz | tar xz && mv fiveam-20241012-git fiveam
+          curl -fsSL https://beta.quicklisp.org/archive/alexandria/2024-10-12/alexandria-20241012-git.tgz | tar xz && mv alexandria-20241012-git alexandria
+          curl -fsSL https://beta.quicklisp.org/archive/trivial-backtrace/2023-02-14/trivial-backtrace-20230214-git.tgz | tar xz && mv trivial-backtrace-20230214-git trivial-backtrace
+          curl -fsSL https://beta.quicklisp.org/archive/asdf-flv/2023-10-21/asdf-flv-version-2.2.tgz | tar xz && mv asdf-flv-version-2.2 asdf-flv
 
       - name: Run tests
         run: |
