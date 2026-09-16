@@ -116,3 +116,43 @@
                (is (not (null mylib)))
                (is (string= "user/my-lib" (getf mylib :github))))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
+
+(test asd-add-ignores-commented-depends-on
+  (let* ((dir (uiop:ensure-pathname
+               (format nil "~aarea51-asd-comment-~a/"
+                       (uiop:temporary-directory)
+                       (get-universal-time))
+               :ensure-directory t))
+         (asd-path (merge-pathnames "app.asd" dir)))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist dir)
+           (with-open-file (out asd-path :direction :output)
+             (write-string ";; :depends-on ()
+(defsystem \"app\" :depends-on () :components ())" out))
+           (area51::asd-add-dep asd-path "alexandria")
+           (let ((text (uiop:read-file-string asd-path)))
+             (is (search ";; :depends-on ()" text))
+             (is (search "\"alexandria\"" text))))
+      (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
+
+(test asd-add-handles-multiline-depends-on
+  (let* ((dir (uiop:ensure-pathname
+               (format nil "~aarea51-asd-multiline-~a/"
+                       (uiop:temporary-directory)
+                       (get-universal-time))
+               :ensure-directory t))
+         (asd-path (merge-pathnames "app.asd" dir)))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist dir)
+           (with-open-file (out asd-path :direction :output)
+             (write-string "(defsystem \"app\"
+  :depends-on (
+    \"foo\")
+  :components ())" out))
+           (area51::asd-add-dep asd-path "bar")
+           (let ((text (uiop:read-file-string asd-path)))
+             (is (search "\"foo\"" text))
+             (is (search "\"bar\"" text))))
+      (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))

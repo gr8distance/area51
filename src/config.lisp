@@ -209,39 +209,70 @@
                       deps))
       ":depends-on ()"))
 
+(defun comment-on-line-p (content pos)
+  "True when POS sits on a semicolon comment on its line."
+  (let* ((line-start (1+ (or (position #\Newline content :end pos :from-end t) -1)))
+         (semi (position #\; content :start line-start :end pos)))
+    (and semi t)))
+
+(defun skip-whitespace (content start)
+  (or (position-if-not (lambda (c)
+                         (member c '(#\Space #\Tab #\Newline #\Return)))
+                       content :start start)
+      (length content)))
+
+(defun find-depends-on-list-span (content)
+  "Locate the first uncommented :depends-on list. Return start, end, and the list."
+  (let ((search-from 0)
+        (needle ":depends-on"))
+    (loop
+      (let ((pos (search needle content :start2 search-from :test #'char-equal)))
+        (unless pos (return nil))
+        (if (comment-on-line-p content pos)
+            (setf search-from (+ pos (length needle)))
+            (let ((list-start (skip-whitespace content (+ pos (length needle))))
+                  (*read-eval* nil))
+              (multiple-value-bind (deps end)
+                  (read-from-string content t nil :start list-start)
+                (return (values list-start end deps)))))))))
+
+(defun format-dep-list (deps)
+  (if deps
+      (format nil "(~{~s~^ ~})"
+              (mapcar (lambda (d)
+                        (if (symbolp d)
+                            (string-downcase (symbol-name d))
+                            d))
+                      deps))
+      "()"))
+
 (defun asd-read-depends (asd-path)
   "Read .asd file and return (values content defsystem-form current-deps).
-   Returns nil if not a valid defsystem."
-  (let* ((content (uiop:read-file-string asd-path))
-         (form (with-input-from-string (s content)
-                 (let ((*read-eval* nil)) (read s)))))
-    (when (and (listp form)
-               (symbolp (car form))
-               (string-equal (symbol-name (car form)) "DEFSYSTEM"))
-      (let ((current-deps (loop for (k v) on (cddr form) by #'cddr
-                                when (and (symbolp k)
-                                          (string-equal (symbol-name k) "DEPENDS-ON"))
-                                  return v)))
-        (values content form current-deps)))))
+   Finds the first uncommented :depends-on even when the file starts with
+   in-package or comments."
+  (let ((content (uiop:read-file-string asd-path)))
+    (multiple-value-bind (start end deps)
+        (find-depends-on-list-span content)
+      (declare (ignore end))
+      (when start
+        (values content nil deps)))))
 
 (defun asd-write-deps (asd-path content old-deps new-deps)
-  "Replace :depends-on in .asd file content and write back.
-   Uses format-deps-string for both old and new so the empty case
-   ('()' in the source, NIL when read back) round-trips correctly."
-  (let* ((old-str (format-deps-string old-deps))
-         (new-str (format-deps-string new-deps))
-         (pos (search old-str content)))
-    (if pos
+  "Replace the first uncommented :depends-on list and write back."
+  (declare (ignore old-deps))
+  (multiple-value-bind (start end)
+      (find-depends-on-list-span content)
+    (if start
         (let ((new-content (uiop:strcat
-                            (subseq content 0 pos)
-                            new-str
-                            (subseq content (+ pos (length old-str))))))
+                            (subseq content 0 start)
+                            (format-dep-list new-deps)
+                            (subseq content end))))
           (with-open-file (out asd-path :direction :output
                                         :if-exists :supersede)
             (write-string new-content out)))
         (format *error-output*
-                "Warning: could not locate ~s in ~a; .asd left unchanged.~%"
-                old-str asd-path))))
+                "Warning: could not locate :depends-on in ~a; .asd left unchanged.~%"
+                asd-path))))
 
 (defun asd-add-dep (asd-path dep-name)
   "Add a dependency to the .asd file's :depends-on."

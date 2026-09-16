@@ -73,37 +73,83 @@ that reads README at load time)."
     (set-dispatch-macro-character #\# #\. #'skip-sharp-dot-reader rt)
     rt))
 
+(defun defsystem-form-p (form)
+  (and (listp form)
+       (symbolp (car form))
+       (string-equal (symbol-name (car form)) "DEFSYSTEM")))
+
+(defun asdf-dep-names (dep)
+  "Return system names from one ASDF :depends-on element."
+  (cond
+    ((or (stringp dep) (symbolp dep))
+     (let ((name (string-downcase (if (symbolp dep)
+                                      (symbol-name dep)
+                                      dep))))
+       (list (if (subsystem-p name) (base-system-name name) name))))
+    ((and (consp dep) (symbolp (first dep)))
+     (let ((tag (symbol-name (first dep))))
+       (cond
+         ((string-equal tag "VERSION")
+          (asdf-dep-names (second dep)))
+         ((string-equal tag "FEATURE")
+          (asdf-dep-names (third dep)))
+         ((string-equal tag "REQUIRE")
+          nil)
+         (t nil))))
+    (t nil)))
+
+(defun defsystem-dep-names (form)
+  (let ((names nil)
+        (plist (cddr form)))
+    (loop for (key val) on plist by #'cddr
+          when (and (symbolp key)
+                    (or (string-equal (symbol-name key) "DEPENDS-ON")
+                        (string-equal (symbol-name key) "DEFSYSTEM-DEPENDS-ON")))
+            do (dolist (d val)
+                 (dolist (name (asdf-dep-names d))
+                   (pushnew name names :test #'string=))))
+    (nreverse names)))
+
+(define-condition asd-parse-error (error)
+  ((path :initarg :path :reader asd-parse-path)
+   (cause :initarg :cause :reader asd-parse-cause))
+  (:report (lambda (condition stream)
+             (format stream "Failed to parse ~a: ~a"
+                     (asd-parse-path condition)
+                     (asd-parse-cause condition)))))
+
 (defun parse-asd-depends (asd-path)
-  "Extract :depends-on from ALL defsystem forms in a .asd file.
-Subsystem names (containing /) are converted to their base system name."
-  (handler-case
-      (let ((all-deps nil))
-        (with-open-file (in asd-path :direction :input)
-          (let ((*readtable* (make-asd-readtable))
-                (*package* (find-package :cl-user)))
-            (loop for form = (read in nil :eof)
-                  until (eq form :eof)
-                  when (and (listp form)
-                            (symbolp (car form))
-                            (string-equal (symbol-name (car form)) "DEFSYSTEM"))
-                    do (let ((plist (cddr form)))
-                         (loop for (key val) on plist by #'cddr
-                               when (and (symbolp key)
-                                         (string-equal (symbol-name key)
-                                                       "DEPENDS-ON"))
-                                 do (dolist (d val)
-                                      (let ((name (string-downcase
-                                                   (if (symbolp d)
-                                                       (symbol-name d)
-                                                       (princ-to-string d)))))
-                                        ;; For subsystems (foo/bar), add the base name (foo)
-                                        (let ((resolved-name (if (subsystem-p name)
-                                                                 (base-system-name name)
-                                                                 name)))
-                                          (pushnew resolved-name all-deps
-                                                   :test #'string=)))))))))
-        (nreverse all-deps))
-    (error () nil)))
+  "Extract :depends-on and :defsystem-depends-on from defsystem forms.
+   A later reader error does not discard already-read defsystem deps.
+   If no defsystem was read and a reader error occurred, signal."
+  (let ((all-deps nil)
+        (saw-defsystem nil)
+        (read-error nil))
+    (with-open-file (in asd-path :direction :input)
+      (let ((*readtable* (make-asd-readtable))
+            (*package* (find-package :cl-user))
+            (*read-eval* nil))
+        (loop
+          (handler-case
+              (let ((form (read in nil :eof)))
+                (when (eq form :eof) (return))
+                (when (defsystem-form-p form)
+                  (setf saw-defsystem t)
+                  (dolist (name (defsystem-dep-names form))
+                    (pushnew name all-deps :test #'string=))))
+            (error (e)
+              (setf read-error e)
+              (return))))))
+    (when (and read-error (not saw-defsystem))
+      (error 'asd-parse-error :path asd-path :cause read-error))
+    (nreverse all-deps)))
+
+(defun primary-asd-files (dir system-name)
+  "ASD files whose pathname-name matches SYSTEM-NAME, excluding *-test ASDs."
+  (let ((base (base-system-name system-name)))
+    (remove-if-not (lambda (asd)
+                     (string-equal (pathname-name asd) base))
+                   (find-asd-files dir))))
 
 (defun builtin-system-p (name)
   "Check if a system name is built-in."
@@ -434,7 +480,7 @@ Subsystem names (containing /) are converted to their base system name."
                          (append (list :name name
                                        :source (dep-source dep))
                                  result))
-                   (dolist (asd (find-asd-files path))
+                   (dolist (asd (primary-asd-files path name))
                      (dolist (td (parse-asd-depends asd))
                        (unless (or (gethash td resolved)
                                    (builtin-system-p td))
