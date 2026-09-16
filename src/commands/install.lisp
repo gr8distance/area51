@@ -10,6 +10,7 @@
     (ecase plan
       (:empty
        (write-lock (list :dist-version (getf lock :dist-version)
+                         :depends nil
                          :packages nil))
        (format t "No dependencies to install~%"))
       (:restore
@@ -24,6 +25,7 @@
        (let* ((dist-version (ensure-quicklisp-index))
               (resolved (resolve-all config)))
          (write-lock (list :dist-version dist-version
+                           :depends (config-dep-names config)
                            :packages (mapcar #'lock-entry-from-resolved resolved)))
          (format t "~%Resolved ~d package~:p. Lock file written.~%"
                  (length resolved)))))))

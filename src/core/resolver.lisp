@@ -235,12 +235,20 @@ Subsystem names (containing /) are converted to their base system name."
                 (nonempty-string-p (getf pkg :url))
                 (nonempty-string-p (getf pkg :sha1))))))
 
+(defun config-dep-names (config)
+  (mapcar (lambda (d) (getf d :name)) (config-dependencies config)))
+
+(defun name-set-equal (a b)
+  (null (set-exclusive-or a b :test #'string=)))
+
 (defun lock-covers-config-p (lock config)
-  "True when LOCK can restore every declared dependency.
+  "True when LOCK can restore every declared dependency and no removed
+   direct dependency remains in the lock's declared set.
    Empty deps never cover a leftover lock; install must rewrite it empty."
   (let ((deps (config-dependencies config)))
     (and lock
          deps
+         (name-set-equal (config-dep-names config) (getf lock :depends))
          (every (lambda (dep)
                   (lock-entry-matches-dep-p
                    (find (getf dep :name) (getf lock :packages)
@@ -322,28 +330,24 @@ Subsystem names (containing /) are converted to their base system name."
 (defun resolve-quicklisp (dep)
   (let* ((name (getf dep :name))
          (info (quicklisp-lookup name)))
-    (if info
-        (let* ((project (getf info :project))
-               (url (getf info :url))
-               (sha1 (getf info :sha1))
-               (cache-dir (cache-dir-for project :quicklisp sha1)))
-          (if (cache-present-p cache-dir)
-              (progn
-                (format t "  ~a (cached)~%" name)
-                (list :path (namestring cache-dir)
-                      :url url :sha1 sha1 :project project
-                      :prefix (getf info :prefix)))
-              (progn
-                (format t "  ~a <- quicklisp~%" name)
-                (let ((path (download-quicklisp-package name)))
-                  (when path
-                    (list :path (namestring path)
-                          :url url :sha1 sha1 :project project
-                          :prefix (getf info :prefix)))))))
-        (let ((cached (find-system-in-cache name)))
-          (when cached
-            (format t "  ~a (cached)~%" name)
-            (list :path (namestring cached)))))))
+    (when info
+      (let* ((project (getf info :project))
+             (url (getf info :url))
+             (sha1 (getf info :sha1))
+             (cache-dir (cache-dir-for project :quicklisp sha1)))
+        (if (cache-present-p cache-dir)
+            (progn
+              (format t "  ~a (cached)~%" name)
+              (list :path (namestring cache-dir)
+                    :url url :sha1 sha1 :project project
+                    :prefix (getf info :prefix)))
+            (progn
+              (format t "  ~a <- quicklisp~%" name)
+              (let ((path (download-quicklisp-package name)))
+                (when path
+                  (list :path (namestring path)
+                        :url url :sha1 sha1 :project project
+                        :prefix (getf info :prefix))))))))))
 
 (defun resolve-dep (dep)
   "Resolve a single dependency, download if needed.

@@ -120,6 +120,7 @@ Test dependencies belong in a separate `.asd` file (e.g. `my-app-test.asd`), fol
 
 ```lisp
 (:dist-version "2026-01-01"
+ :depends ("alexandria" "my-lib")
  :packages
  ((:name "alexandria"
    :source :quicklisp

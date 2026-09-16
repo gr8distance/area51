@@ -77,7 +77,8 @@
 (test install-plan-restores-covering-lock
   (let* ((dep (list :name "lib"
                     :url "https://example.com/lib.git"))
-         (lock (list :packages
+         (lock (list :depends '("lib")
+                     :packages
                      (list (list :name "lib"
                                  :source :github
                                  :url "https://example.com/lib.git"
@@ -109,12 +110,28 @@
                    (list (list :name "lib"
                                :url "https://example.com/lib.git"
                                :ref "v2")))
-             (list :packages
+             (list :depends '("lib")
+                   :packages
                    (list (list :name "lib"
                                :source :github
                                :url "https://example.com/lib.git"
                                :ref "v1"
-                               :sha "abc123"))))))))
+                               :sha "abc123"))))))
+    (is (eq :resolve
+            (area51::install-plan
+             (list :dependencies
+                   (list (list :name "keep"
+                               :url "https://example.com/keep.git")))
+             (list :depends '("keep" "gone")
+                   :packages
+                   (list (list :name "keep"
+                               :source :github
+                               :url "https://example.com/keep.git"
+                               :sha "abc123")
+                         (list :name "gone"
+                               :source :github
+                               :url "https://example.com/gone.git"
+                               :sha "def456"))))))))
 
 (test spec-for-prefers-explicit-github
   (let* ((explicit (list :name "dep"
@@ -206,6 +223,7 @@
                 dir)
                (area51::write-lock
                 (list :dist-version "pinned"
+                      :depends '("lib")
                       :packages (list (list :name "lib"
                                             :source :github
                                             :url "https://example.com/lib.git"
