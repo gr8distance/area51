@@ -32,7 +32,7 @@
 (defun fetch-distinfo ()
   "Fetch and parse the Quicklisp dist metadata."
   (multiple-value-bind (output code)
-      (run-command (format nil "curl -sL ~a" *quicklisp-dist-url*))
+      (run-command (curl-argv *quicklisp-dist-url*))
     (unless (zerop code)
       (error "Failed to fetch Quicklisp dist info from ~a" *quicklisp-dist-url*))
     (parse-distinfo output)))
@@ -47,7 +47,7 @@
   (ensure-directories-exist *quicklisp-cache-dir*)
   (let ((dest (namestring (quicklisp-index-path filename))))
     (multiple-value-bind (output code)
-        (run-command (format nil "curl -sL -o ~a ~a" dest url))
+        (run-command (curl-argv url :output-file dest))
       (declare (ignore output))
       (unless (zerop code)
         (error "Failed to download ~a" url)))
@@ -214,7 +214,7 @@
       (ensure-directories-exist *quicklisp-cache-dir*)
       (ensure-area51-dirs)
       (multiple-value-bind (output code)
-          (run-command (format nil "curl -sL -o ~a ~a" tarball-path url))
+          (run-command (curl-argv url :output-file tarball-path))
         (declare (ignore output))
         (unless (zerop code)
           (format *error-output* "Failed to download ~a~%" url)
@@ -222,8 +222,7 @@
       ;; Extract tarball into packages dir
       ;; Quicklisp tarballs extract to a prefix/ directory
       (multiple-value-bind (output code)
-          (run-command (format nil "tar xzf ~a -C ~a"
-                               tarball-path (namestring *packages-dir*)))
+          (run-command (tar-extract-argv tarball-path (namestring *packages-dir*)))
         (declare (ignore output))
         (unless (zerop code)
           (format *error-output* "Failed to extract ~a~%" tarball-path)

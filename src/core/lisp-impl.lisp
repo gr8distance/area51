@@ -38,29 +38,23 @@
                        :inherit-configuration))"
                 (namestring *packages-dir*)))))
 
-(defun lisp-eval-command (dir &rest eval-forms)
-  "Generate a shell command to evaluate forms in a Lisp subprocess."
+(defun lisp-eval-argv (&rest eval-forms)
+  "Return an argv list for a Lisp subprocess. Working directory is not inlined."
   (let ((impl *lisp-impl*))
     (cond
       ((string= impl "sbcl")
-       (format nil "cd ~a && sbcl --noinform --non-interactive ~
-                    --eval '(require :asdf)' ~
-                    --eval '(setf asdf:*asdf-verbose* nil)' ~
-                    --eval '~a' ~
-                    --eval '(push *default-pathname-defaults* asdf:*central-registry*)' ~
-                    ~{--eval '~a' ~}"
-               (namestring dir)
-               (asdf-setup-form)
-               eval-forms))
+       (append (list "sbcl" "--noinform" "--non-interactive"
+                     "--eval" "(require :asdf)"
+                     "--eval" "(setf asdf:*asdf-verbose* nil)"
+                     "--eval" (asdf-setup-form)
+                     "--eval" "(push *default-pathname-defaults* asdf:*central-registry*)")
+               (mapcan (lambda (form) (list "--eval" form)) eval-forms)))
       ((string= impl "ccl")
-       (format nil "cd ~a && ccl --no-init --batch ~
-                    --eval '(require :asdf)' ~
-                    --eval '~a' ~
-                    --eval '(push *default-pathname-defaults* asdf:*central-registry*)' ~
-                    ~{--eval '~a' ~}"
-               (namestring dir)
-               (asdf-setup-form)
-               eval-forms))
+       (append (list "ccl" "--no-init" "--batch"
+                     "--eval" "(require :asdf)"
+                     "--eval" (asdf-setup-form)
+                     "--eval" "(push *default-pathname-defaults* asdf:*central-registry*)")
+               (mapcan (lambda (form) (list "--eval" form)) eval-forms)))
       (t
        (error "Unsupported Lisp implementation: ~a. Supported: sbcl, ccl" impl)))))
 

@@ -8,9 +8,9 @@
     (format t "Running tests for ~a...~%" name)
     (multiple-value-bind (out code)
         (run-command
-         (lisp-eval-command
-          (uiop:getcwd)
+         (lisp-eval-argv
           (format nil "(asdf:test-system ~s)" name))
+         :directory (uiop:getcwd)
          :output :interactive)
       (declare (ignore out))
       (unless (zerop code)
