@@ -47,6 +47,16 @@
                         :sha "abc123"
                         :path "/other/machine/lib/"))))))
 
+(test lock-package-path-uses-quicklisp-project-name
+  "System name and release project can differ; the cache is the project dir."
+  (let ((area51::*packages-dir* #p"/tmp/area51-cache/"))
+    (is (string= "/tmp/area51-cache/quicklisp/cl-ppcre-deadbeef/"
+                 (area51::lock-package-path
+                  (list :name "cl-ppcre-unicode"
+                        :source :quicklisp
+                        :project "cl-ppcre"
+                        :sha1 "deadbeef"))))))
+
 (test lock-entry-omits-absolute-path
   (let ((entry (area51::lock-entry-from-resolved
                 (list :name "lib"
@@ -263,6 +273,32 @@
                            (uiop:read-file-string
                             (merge-pathnames "pin.txt" path)))))))
       (uiop:delete-directory-tree repo :validate t :if-does-not-exist :ignore)
+      (uiop:delete-directory-tree packages :validate t :if-does-not-exist :ignore))))
+
+(test restore-package-signals-when-download-fails
+  (let ((packages (make-temp-dir "area51-restore-fail")))
+    (unwind-protect
+         (let ((area51::*packages-dir* packages)
+               (*error-output* (make-broadcast-stream)))
+           (signals area51::restore-failed
+             (area51::restore-package
+              (list :name "missing-lib"
+                    :source :quicklisp
+                    :project "missing-lib"
+                    :url "https://example.invalid/missing-lib.tgz"
+                    :sha1 "deadbeef"))))
+      (uiop:delete-directory-tree packages :validate t :if-does-not-exist :ignore))))
+
+(test find-system-in-cache-rejects-multiple-revisions
+  (let ((packages (make-temp-dir "area51-multi-rev")))
+    (unwind-protect
+         (let* ((area51::*packages-dir* packages)
+                (a (area51::cache-dir-for "lib" :github "aaa"))
+                (b (area51::cache-dir-for "lib" :github "bbb")))
+           (write-asd a "lib" '())
+           (write-asd b "lib" '())
+           (signals area51::dependency-conflict
+             (area51::find-system-in-cache "lib")))
       (uiop:delete-directory-tree packages :validate t :if-does-not-exist :ignore))))
 
 (test asdf-setup-uses-computed-lock-paths

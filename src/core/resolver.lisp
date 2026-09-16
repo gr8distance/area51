@@ -28,10 +28,14 @@
 (defun package-cache-dir (name &key (source :quicklisp) revision)
   (cache-dir-for name source revision))
 
+(defun lock-cache-name (pkg)
+  "Quicklisp cache dirs are keyed by release project, not by system name."
+  (or (getf pkg :project) (getf pkg :name)))
+
 (defun lock-package-path (pkg)
   "Recompute the on-disk path from lock identity. Do not trust a stored absolute path."
   (namestring
-   (cache-dir-for (getf pkg :name)
+   (cache-dir-for (lock-cache-name pkg)
                   (or (getf pkg :source) :quicklisp)
                   (or (getf pkg :sha) (getf pkg :sha1)))))
 
@@ -106,21 +110,30 @@ Subsystem names (containing /) are converted to their base system name."
   (or (member name *builtin-systems* :test #'string-equal)
       (uiop:string-prefix-p "sb-" name)))
 
+(defun asd-matches-system-p (asd name base-name)
+  (or (string-equal name (pathname-name asd))
+      (and (not (string= name base-name))
+           (string-equal base-name (pathname-name asd)))))
+
 (defun find-system-in-cache (name)
-  "Search for a system in cached packages by scanning .asd files."
+  "Search cached packages for NAME. Multiple revisions of the same system
+   are a conflict; do not pick an arbitrary directory."
   (let ((packages-dir (namestring *packages-dir*))
-        (base-name (base-system-name name)))
+        (base-name (base-system-name name))
+        (matches nil))
     (when (probe-file packages-dir)
       (dolist (pkg-dir (append (directory (merge-pathnames "github/*/" packages-dir))
                                (directory (merge-pathnames "quicklisp/*/" packages-dir))))
-        (dolist (asd (find-asd-files pkg-dir))
-          ;; Direct match by filename
-          (when (string-equal name (pathname-name asd))
-            (return-from find-system-in-cache pkg-dir))
-          ;; Subsystem: match by base name
-          (when (and (not (string= name base-name))
-                     (string-equal base-name (pathname-name asd)))
-            (return-from find-system-in-cache pkg-dir)))))))
+        (when (some (lambda (asd) (asd-matches-system-p asd name base-name))
+                    (find-asd-files pkg-dir))
+          (pushnew (namestring pkg-dir) matches :test #'string=))))
+    (cond
+      ((null matches) nil)
+      ((null (rest matches)) (pathname (first matches)))
+      (t (error 'dependency-conflict
+                :name name
+                :existing (first matches)
+                :incoming (second matches))))))
 
 ;;; --- Dependency resolution ---
 
@@ -129,6 +142,12 @@ Subsystem names (containing /) are converted to their base system name."
   (:report (lambda (condition stream)
              (format stream "Unresolved dependencies: ~{~a~^, ~}"
                      (unresolved-names condition)))))
+
+(define-condition restore-failed (error)
+  ((name :initarg :name :reader restore-failed-name))
+  (:report (lambda (condition stream)
+             (format stream "Failed to restore package ~a"
+                     (restore-failed-name condition)))))
 
 (define-condition dependency-conflict (error)
   ((name :initarg :name :reader conflict-name)
@@ -354,15 +373,22 @@ Subsystem names (containing /) are converted to their base system name."
 
 (defun restore-package (pkg)
   "Materialize PKG from lock identity. Recomputes the cache path; ignores :path."
-  (let* ((dest (lock-package-path pkg))
+  (let* ((name (getf pkg :name))
+         (dest (lock-package-path pkg))
          (source (or (getf pkg :source) :quicklisp)))
-    (if (cache-present-p dest)
-        (progn
-          (format t "  ~a (cached)~%" (getf pkg :name))
-          dest)
-        (ecase source
-          (:github (getf (restore-github pkg dest) :path))
-          (:quicklisp (restore-quicklisp pkg dest))))))
+    (flet ((ensure-restored (path)
+             (let ((present (and path (cache-present-p path))))
+               (unless present
+                 (error 'restore-failed :name name))
+               path)))
+      (ensure-restored
+       (if (cache-present-p dest)
+           (progn
+             (format t "  ~a (cached)~%" name)
+             dest)
+           (ecase source
+             (:github (getf (restore-github pkg dest) :path))
+             (:quicklisp (restore-quicklisp pkg dest))))))))
 
 (defun restore-lock (lock &key (restore-fn #'restore-package))
   (mapcar restore-fn (getf lock :packages)))
