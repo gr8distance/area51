@@ -55,6 +55,13 @@
 (defun tar-extract-argv (tarball dest)
   (list "tar" "-xzf" tarball "-C" dest))
 
+(defun copy-executable-argv (source dest)
+  "cp -p preserves the execute bit. uiop:copy-file copies bytes only."
+  (list "cp" "-p" (namestring source) (namestring dest)))
+
+(defun copy-executable (source dest)
+  (run-command! (copy-executable-argv source dest)))
+
 (defun git-clone (url dest &key ref)
   "Clone a git repository"
   (run-command! (git-clone-argv url dest))

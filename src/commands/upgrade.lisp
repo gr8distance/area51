@@ -15,6 +15,6 @@
     (format t "Building...~%")
     (run-command! (list "sbcl" "--noinform" "--non-interactive" "--load" "build.lisp")
                   :directory build-dir)
-    (uiop:copy-file (merge-pathnames "bin/area51" build-dir) bin-path)
+    (copy-executable (merge-pathnames "bin/area51" build-dir) bin-path)
     (uiop:delete-directory-tree build-dir :validate t :if-does-not-exist :ignore)
     (format t "Updated. Run 'area51 -v' to verify.~%")))

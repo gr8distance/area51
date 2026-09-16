@@ -49,3 +49,25 @@
              (is (string= "true"
                           (string-trim '(#\Newline #\Space) out)))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
+
+(test copy-executable-keeps-execute-bit
+  "upgrade must not drop +x the way uiop:copy-file does."
+  (let* ((dir (uiop:ensure-pathname
+               (format nil "~aarea51-copy-exec-~a/"
+                       (uiop:temporary-directory)
+                       (random 1000000))
+               :ensure-directory t))
+         (src (merge-pathnames "src.sh" dir))
+         (dst (merge-pathnames "dst.sh" dir)))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist dir)
+           (with-open-file (out src :direction :output :if-exists :supersede)
+             (format out "#!/bin/sh~%echo ok~%"))
+           (area51::run-command! (list "chmod" "+x" (namestring src)))
+           (area51::copy-executable src dst)
+           (multiple-value-bind (out code)
+               (area51::run-command (list (namestring dst)))
+             (declare (ignore out))
+             (is (zerop code))))
+      (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
