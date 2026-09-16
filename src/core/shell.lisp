@@ -41,8 +41,17 @@
 (defun git-clone-argv (url dest)
   (list "git" "clone" "--" url dest))
 
+(defun git-ref-argument (ref)
+  "Return REF if it cannot be mistaken for a git option."
+  (unless (and (stringp ref)
+               (plusp (length ref))
+               (not (char= (char ref 0) #\-)))
+    (error "Invalid git ref: ~s" ref))
+  ref)
+
 (defun git-checkout-argv (ref)
-  (list "git" "checkout" "--" ref))
+  "Checkout a commit-ish. Do not use `checkout -- REF`; that is a pathspec."
+  (list "git" "checkout" "--detach" (git-ref-argument ref)))
 
 (defun git-rev-parse-argv ()
   (list "git" "rev-parse" "HEAD"))
@@ -72,3 +81,15 @@
   "Get current commit SHA"
   (string-trim '(#\Newline #\Space)
                (run-command! (git-rev-parse-argv) :directory dir)))
+
+(defun move-directory-argv (source dest)
+  (list "mv"
+        (string-right-trim "/" (namestring source))
+        (string-right-trim "/" (namestring dest))))
+
+(defun move-directory (source dest)
+  "Move SOURCE directory to DEST. DEST must not already exist."
+  (let ((parent (uiop:pathname-parent-directory-pathname
+                 (uiop:ensure-directory-pathname dest))))
+    (ensure-directories-exist parent)
+    (run-command! (move-directory-argv source dest))))

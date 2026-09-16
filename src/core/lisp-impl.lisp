@@ -8,28 +8,30 @@
   "Lisp implementation to use. Override with AREA51_LISP env var.")
 
 (defun package-paths-from-lock ()
-  "Return list of package :path strings from the current project's area51.lock.
-   Returns nil if no lock file exists."
+  "Return cache directories for locked packages.
+   Paths are recomputed from source and revision; stored absolute :path is ignored.
+   Returns NIL both when there is no lock and when the lock has no packages;
+   callers must distinguish those cases with READ-LOCK."
   (let ((lock (read-lock)))
     (when lock
       (loop for pkg in (getf lock :packages)
-            for path = (getf pkg :path)
-            when path collect path))))
+            collect (lock-package-path pkg)))))
 
 (defun asdf-setup-form ()
   "Generate a form that configures ASDF to find this project's locked dependencies.
    Uses per-package :tree entries from area51.lock for true per-project
    isolation. :tree (not :directory) is used because some packages ship
    with sub-systems in subdirectories (e.g. mgl-pax/autoload/autoload.asd).
-   Falls back to a :tree over the global packages dir when no lock file
-   is available (e.g. during install)."
-  (let ((paths (package-paths-from-lock)))
-    (if paths
+   An empty lock registers no package trees. Falls back to a :tree over
+   the global packages dir only when no lock file exists (e.g. during install)."
+  (let ((lock (read-lock)))
+    (if lock
         (with-output-to-string (out)
           (write-string
            "(asdf:initialize-source-registry (list :source-registry "
            out)
-          (dolist (p paths)
+          (dolist (p (loop for pkg in (getf lock :packages)
+                           collect (lock-package-path pkg)))
             (format out "(list :tree ~s) " p))
           (write-string ":inherit-configuration))" out))
         (format nil "(asdf:initialize-source-registry ~

@@ -3,3 +3,4 @@
 *.dx64fsl
 bin/
 .serena
+.DS_Store
