@@ -18,6 +18,13 @@
       (error "Command failed (~d): ~a" code command))
     out))
 
+(defun quit-unless-zero (code &optional (exit #'uiop:quit))
+  "If CODE is non-zero, call EXIT with CODE. Return CODE when it is zero.
+   EXIT is injectable so tests can observe the status without killing the process."
+  (if (zerop code)
+      code
+      (funcall exit code)))
+
 (defun git-clone (url dest &key ref)
   "Clone a git repository"
   (run-command! (format nil "git clone ~a ~a" url dest))

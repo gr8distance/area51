@@ -6,10 +6,12 @@
   (let* ((config (ensure-config))
          (name (config-value config :name))
          (entry (or (config-value config :entry-point) "main")))
-    (run-command
-     (lisp-eval-command
-      (uiop:getcwd)
-      (format nil "(asdf:load-system ~s :verbose nil)" name)
-      (format nil "(funcall (find-symbol ~s ~s))"
-              (string-upcase entry) (string-upcase name)))
-     :output :interactive)))
+    (quit-unless-zero
+     (nth-value 1
+                (run-command
+                 (lisp-eval-command
+                  (uiop:getcwd)
+                  (format nil "(asdf:load-system ~s :verbose nil)" name)
+                  (format nil "(funcall (find-symbol ~s ~s))"
+                          (string-upcase entry) (string-upcase name)))
+                 :output :interactive)))))

@@ -100,6 +100,26 @@ Subsystem names (containing /) are converted to their base system name."
 
 ;;; --- Dependency resolution ---
 
+(define-condition unresolved-dependencies (error)
+  ((names :initarg :names :reader unresolved-names))
+  (:report (lambda (condition stream)
+             (format stream "Unresolved dependencies: ~{~a~^, ~}"
+                     (unresolved-names condition)))))
+
+(defun report-unresolved (names)
+  (format *error-output* "~%Unresolved dependencies:~%")
+  (dolist (name names)
+    (format *error-output* "  ~a  (not found in Quicklisp or GitHub)~%" name)))
+
+(defun resolved-packages-or-error (resolved unresolved)
+  "Return RESOLVED, or signal UNRESOLVED-DEPENDENCIES when UNRESOLVED is non-nil.
+   Does not write a lock file; callers must not persist RESOLVED on this error."
+  (let ((names (sort (copy-list unresolved) #'string<)))
+    (when names
+      (report-unresolved names)
+      (error 'unresolved-dependencies :names names))
+    resolved))
+
 (defun dep-is-github-p (dep)
   "Check if a dep has a GitHub/URL source."
   (or (getf dep :url) (getf dep :github)))
@@ -142,12 +162,12 @@ Subsystem names (containing /) are converted to their base system name."
                                     "  ~a not found in Quicklisp index~%" name)
                             nil))))))))))
 
-(defun resolve-all (config)
+(defun resolve-all (config &key (resolve-dep-fn #'resolve-dep))
   "Resolve all dependencies recursively.
    1. Resolve direct dependencies from area51.lisp
    2. Parse each package's .asd for :depends-on
    3. Recursively resolve transitive dependencies
-   4. Report unresolved dependencies"
+   4. Signal UNRESOLVED-DEPENDENCIES if any name could not be resolved"
   (let ((deps (config-dependencies config))
         (resolved (make-hash-table :test 'equal))
         (unresolved nil)
@@ -162,7 +182,7 @@ Subsystem names (containing /) are converted to their base system name."
         (unless (or (gethash name resolved)
                     (builtin-system-p name))
           ;; Resolve this dependency
-          (let ((path (resolve-dep dep)))
+          (let ((path (funcall resolve-dep-fn dep)))
             (if path
                 (progn
                   ;; Mark as resolved
@@ -182,15 +202,11 @@ Subsystem names (containing /) are converted to their base system name."
                           (push (list :name td) queue))))))
                 ;; Failed to resolve
                 (pushnew name unresolved :test #'string=))))))
-    ;; Report unresolved
-    (when unresolved
-      (format *error-output* "~%Unresolved dependencies:~%")
-      (dolist (name (sort unresolved #'string<))
-        (format *error-output* "  ~a  (not found in Quicklisp or GitHub)~%" name)))
-    ;; Return resolved list
     (let ((results nil))
       (maphash (lambda (k v)
                  (declare (ignore k))
                  (push v results))
                resolved)
-      (sort results #'string< :key (lambda (r) (getf r :name))))))
+      (resolved-packages-or-error
+       (sort results #'string< :key (lambda (r) (getf r :name)))
+       unresolved))))

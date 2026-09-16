@@ -7,7 +7,8 @@
                 ((:file "package")
                  (:file "config-test" :depends-on ("package"))
                  (:file "resolver-test" :depends-on ("package"))
+                 (:file "status-test" :depends-on ("package"))
                  (:file "quicklisp-test" :depends-on ("package")))))
   :perform (test-op (op c)
-             (uiop:symbol-call :fiveam :run!
-                               (uiop:find-symbol* :area51-tests :area51-test))))
+             (declare (ignore op c))
+             (uiop:symbol-call :area51-test :run-tests)))
