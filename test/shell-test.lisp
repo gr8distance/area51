@@ -26,6 +26,10 @@
   (is (equal '("tar" "-xzf" "/tmp/a.tgz" "-C" "/tmp/out")
              (area51::tar-extract-argv "/tmp/a.tgz" "/tmp/out"))))
 
+(test openssl-digest-argv-is-a-list
+  (is (equal '("openssl" "dgst" "-sha1" "/tmp/a.tgz")
+             (area51::openssl-digest-argv "sha1" "/tmp/a.tgz"))))
+
 (test lisp-eval-argv-is-not-a-shell-string
   (let ((argv (area51::lisp-eval-argv "(+ 1 1)")))
     (is (listp argv))

@@ -16,6 +16,14 @@
 
 ;;; --- Dist metadata ---
 
+(defun prefer-https-url (url)
+  "Rewrite http:// to https:// so Quicklisp index and archive URLs are not downgraded."
+  (if (and (stringp url)
+           (>= (length url) 7)
+           (string-equal "http://" url :end2 7))
+      (concatenate 'string "https://" (subseq url 7))
+      url))
+
 (defun parse-distinfo (text)
   "Parse quicklisp.txt key: value format into an alist."
   (let ((result nil))
@@ -45,7 +53,8 @@
 (defun fetch-quicklisp-file (url filename)
   "Download a Quicklisp index file to the cache directory."
   (ensure-directories-exist *quicklisp-cache-dir*)
-  (let ((dest (namestring (quicklisp-index-path filename))))
+  (let ((dest (namestring (quicklisp-index-path filename)))
+        (url (prefer-https-url url)))
     (multiple-value-bind (output code)
         (run-command (curl-argv url :output-file dest))
       (declare (ignore output))
@@ -53,14 +62,20 @@
         (error "Failed to download ~a" url)))
     dest))
 
+(defun quicklisp-index-files-present-p ()
+  (and (probe-file (quicklisp-index-path "releases.txt"))
+       (probe-file (quicklisp-index-path "systems.txt"))
+       (probe-file (quicklisp-index-path "dist-version.txt"))))
+
 (defun quicklisp-index-fresh-p ()
-  "Check if the cached index is less than 24 hours old."
-  (let ((path (quicklisp-index-path "releases.txt")))
-    (when (probe-file path)
-      (let* ((file-time (file-write-date path))
-             (now (get-universal-time))
-             (age (- now file-time)))
-        (< age (* 24 60 60))))))
+  "True only when the full index set exists and is less than 24 hours old.
+   A lone releases.txt is not fresh."
+  (when (quicklisp-index-files-present-p)
+    (let* ((path (quicklisp-index-path "releases.txt"))
+           (file-time (file-write-date path))
+           (now (get-universal-time))
+           (age (- now file-time)))
+      (< age (* 24 60 60)))))
 
 (defun ensure-quicklisp-index ()
   "Ensure we have a fresh local copy of the Quicklisp index.
@@ -194,6 +209,58 @@
 
 ;;; --- Download and extract ---
 
+(define-condition archive-integrity-error (error)
+  ((path :initarg :path :reader archive-integrity-path)
+   (kind :initarg :kind :reader archive-integrity-kind)
+   (expected :initarg :expected :reader archive-integrity-expected)
+   (actual :initarg :actual :reader archive-integrity-actual))
+  (:report (lambda (condition stream)
+             (format stream "~a mismatch for ~a: wanted ~a got ~a"
+                     (archive-integrity-kind condition)
+                     (archive-integrity-path condition)
+                     (archive-integrity-expected condition)
+                     (archive-integrity-actual condition)))))
+
+(defun file-byte-size (path)
+  (with-open-file (in path :direction :input :element-type '(unsigned-byte 8))
+    (file-length in)))
+
+(defun parse-openssl-digest (output)
+  (let ((pos (position #\= output)))
+    (when pos
+      (string-downcase
+       (string-trim '(#\Space #\Newline #\Return #\Tab)
+                    (subseq output (1+ pos)))))))
+
+(defun file-digest (algorithm path)
+  (parse-openssl-digest
+   (run-command! (openssl-digest-argv algorithm path))))
+
+(defun hex-equal (a b)
+  (and (stringp a) (stringp b) (string-equal a b)))
+
+(defun verify-release-archive (path info)
+  "Check size / md5 / sha1 from INFO against PATH. Signal on mismatch."
+  (let ((size (getf info :size))
+        (md5 (getf info :md5))
+        (sha1 (getf info :sha1)))
+    (when (and size (not (zerop size)))
+      (let ((actual (file-byte-size path)))
+        (unless (= actual size)
+          (error 'archive-integrity-error
+                 :path path :kind :size :expected size :actual actual))))
+    (when (and (stringp sha1) (plusp (length sha1)))
+      (let ((actual (file-digest "sha1" path)))
+        (unless (hex-equal actual sha1)
+          (error 'archive-integrity-error
+                 :path path :kind :sha1 :expected sha1 :actual actual))))
+    (when (and (stringp md5) (plusp (length md5)))
+      (let ((actual (file-digest "md5" path)))
+        (unless (hex-equal actual md5)
+          (error 'archive-integrity-error
+                 :path path :kind :md5 :expected md5 :actual actual))))
+    path))
+
 (defun extracted-release-dir (tmp-root prefix)
   (if prefix
       (merge-pathnames (format nil "~a/" prefix) tmp-root)
@@ -201,9 +268,10 @@
 
 (defun download-release (info)
   "Download a Quicklisp release described by INFO into a sha1-keyed cache dir.
-   Extracts into a temporary directory and only then publishes the cache path."
+   Extracts into a temporary directory and only then publishes the cache path.
+   Size and hashes are checked before extract."
   (let* ((project (getf info :project))
-         (url (getf info :url))
+         (url (prefer-https-url (getf info :url)))
          (prefix (getf info :prefix))
          (sha1 (getf info :sha1))
          (cache-dir (cache-dir-for project :quicklisp sha1))
@@ -223,6 +291,12 @@
         (format *error-output* "Failed to download ~a~%" url)
         (uiop:delete-directory-tree tmp-root :validate t :if-does-not-exist :ignore)
         (return-from download-release nil)))
+    (handler-bind ((error (lambda (e)
+                            (declare (ignore e))
+                            (when (probe-file tarball-path) (delete-file tarball-path))
+                            (uiop:delete-directory-tree tmp-root :validate t
+                                                         :if-does-not-exist :ignore))))
+      (verify-release-archive tarball-path info))
     (multiple-value-bind (output code)
         (run-command (tar-extract-argv tarball-path (namestring tmp-root)))
       (declare (ignore output))

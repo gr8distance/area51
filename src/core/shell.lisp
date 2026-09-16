@@ -61,6 +61,9 @@
           (when output-file (list "-o" output-file))
           (list "--" url)))
 
+(defun openssl-digest-argv (algorithm path)
+  (list "openssl" "dgst" (format nil "-~(~a~)" algorithm) (namestring path)))
+
 (defun tar-extract-argv (tarball dest)
   (list "tar" "-xzf" tarball "-C" dest))
 
