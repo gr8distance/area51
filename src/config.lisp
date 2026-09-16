@@ -289,31 +289,44 @@
 
 (defun asd-read-depends (asd-path)
   "Read .asd file and return (values content defsystem-form current-deps).
-   Finds the first uncommented :depends-on even when the file starts with
-   in-package or comments."
+   Finds the defsystem even when it has no :depends-on yet."
   (let ((content (uiop:read-file-string asd-path)))
     (multiple-value-bind (start end deps)
         (find-depends-on-list-span content)
       (declare (ignore end))
-      (when start
-        (values content nil deps)))))
+      (cond
+        (start (values content nil deps))
+        ((find-defsystem-span content) (values content nil nil))))))
+
+(defun insert-depends-clause (content deps)
+  (multiple-value-bind (form-start form-end)
+      (find-defsystem-span content)
+    (when form-start
+      (let ((close (position #\) content :from-end t :end form-end :start form-start)))
+        (when close
+          (uiop:strcat
+           (subseq content 0 close)
+           (format nil "~%  :depends-on ~a" (format-dep-list deps))
+           (subseq content close)))))))
 
 (defun asd-write-deps (asd-path content old-deps new-deps)
-  "Replace the first uncommented :depends-on list and write back."
+  "Replace the defsystem :depends-on list, or insert one if missing."
   (declare (ignore old-deps))
   (multiple-value-bind (start end)
       (find-depends-on-list-span content)
-    (if start
-        (let ((new-content (uiop:strcat
-                            (subseq content 0 start)
-                            (format-dep-list new-deps)
-                            (subseq content end))))
+    (let ((new-content
+            (if start
+                (uiop:strcat (subseq content 0 start)
+                             (format-dep-list new-deps)
+                             (subseq content end))
+                (insert-depends-clause content new-deps))))
+      (if new-content
           (with-open-file (out asd-path :direction :output
                                         :if-exists :supersede)
-            (write-string new-content out)))
-        (format *error-output*
-                "Warning: could not locate :depends-on in ~a; .asd left unchanged.~%"
-                asd-path))))
+            (write-string new-content out))
+          (format *error-output*
+                  "Warning: could not locate defsystem in ~a; .asd left unchanged.~%"
+                  asd-path)))))
 
 (defun asd-add-dep (asd-path dep-name)
   "Add a dependency to the .asd file's :depends-on."
