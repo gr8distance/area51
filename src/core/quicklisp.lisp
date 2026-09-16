@@ -194,45 +194,59 @@
 
 ;;; --- Download and extract ---
 
+(defun extracted-release-dir (tmp-root prefix)
+  (if prefix
+      (merge-pathnames (format nil "~a/" prefix) tmp-root)
+      (first (directory (merge-pathnames "*/" tmp-root)))))
+
+(defun download-release (info)
+  "Download a Quicklisp release described by INFO into a sha1-keyed cache dir.
+   Extracts into a temporary directory and only then publishes the cache path."
+  (let* ((project (getf info :project))
+         (url (getf info :url))
+         (prefix (getf info :prefix))
+         (sha1 (getf info :sha1))
+         (cache-dir (cache-dir-for project :quicklisp sha1))
+         (tarball-path (namestring
+                        (merge-pathnames (format nil "~a.tgz" project)
+                                         *quicklisp-cache-dir*)))
+         (tmp-root (temporary-cache-dir project)))
+    (when (cache-present-p cache-dir)
+      (return-from download-release cache-dir))
+    (ensure-directories-exist *quicklisp-cache-dir*)
+    (ensure-area51-dirs)
+    (ensure-directories-exist tmp-root)
+    (multiple-value-bind (output code)
+        (run-command (curl-argv url :output-file tarball-path))
+      (declare (ignore output))
+      (unless (zerop code)
+        (format *error-output* "Failed to download ~a~%" url)
+        (uiop:delete-directory-tree tmp-root :validate t :if-does-not-exist :ignore)
+        (return-from download-release nil)))
+    (multiple-value-bind (output code)
+        (run-command (tar-extract-argv tarball-path (namestring tmp-root)))
+      (declare (ignore output))
+      (unless (zerop code)
+        (format *error-output* "Failed to extract ~a~%" tarball-path)
+        (uiop:delete-directory-tree tmp-root :validate t :if-does-not-exist :ignore)
+        (return-from download-release nil)))
+    (let ((extracted (extracted-release-dir tmp-root prefix)))
+      (unless (and extracted (uiop:directory-exists-p extracted))
+        (format *error-output* "Extracted archive for ~a has no prefix directory~%"
+                project)
+        (uiop:delete-directory-tree tmp-root :validate t :if-does-not-exist :ignore)
+        (return-from download-release nil))
+      (let ((published (commit-cache-dir extracted cache-dir)))
+        (uiop:delete-directory-tree tmp-root :validate t :if-does-not-exist :ignore)
+        (when (probe-file tarball-path)
+          (delete-file tarball-path))
+        published))))
+
 (defun download-quicklisp-package (system-name)
   "Download and extract a Quicklisp package.
    Returns the path to the extracted package directory, or nil on failure."
   (let ((info (quicklisp-lookup system-name)))
     (unless info
+      (format *error-output* "  ~a not found in Quicklisp index~%" system-name)
       (return-from download-quicklisp-package nil))
-    (let* ((project (getf info :project))
-           (url (getf info :url))
-           (prefix (getf info :prefix))
-           (cache-dir (package-cache-dir project))
-           (tarball-path (namestring
-                          (merge-pathnames (format nil "~a.tgz" project)
-                                           *quicklisp-cache-dir*))))
-      ;; Already extracted?
-      (when (probe-file cache-dir)
-        (return-from download-quicklisp-package cache-dir))
-      ;; Download tarball
-      (ensure-directories-exist *quicklisp-cache-dir*)
-      (ensure-area51-dirs)
-      (multiple-value-bind (output code)
-          (run-command (curl-argv url :output-file tarball-path))
-        (declare (ignore output))
-        (unless (zerop code)
-          (format *error-output* "Failed to download ~a~%" url)
-          (return-from download-quicklisp-package nil)))
-      ;; Extract tarball into packages dir
-      ;; Quicklisp tarballs extract to a prefix/ directory
-      (multiple-value-bind (output code)
-          (run-command (tar-extract-argv tarball-path (namestring *packages-dir*)))
-        (declare (ignore output))
-        (unless (zerop code)
-          (format *error-output* "Failed to extract ~a~%" tarball-path)
-          (return-from download-quicklisp-package nil)))
-      ;; Rename prefix dir to project name if different
-      (let ((extracted-dir (merge-pathnames (format nil "~a/" prefix)
-                                            *packages-dir*)))
-        (unless (string= (namestring extracted-dir)
-                          (namestring cache-dir))
-          (rename-file extracted-dir cache-dir)))
-      ;; Clean up tarball
-      (delete-file tarball-path)
-      cache-dir)))
+    (download-release info)))

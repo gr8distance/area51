@@ -122,20 +122,17 @@ Test dependencies belong in a separate `.asd` file (e.g. `my-app-test.asd`), fol
 (:dist-version "2026-01-01"
  :packages
  ((:name "alexandria"
-   :path "/home/user/.area51/packages/alexandria/"
    :source :quicklisp
-   :sha nil)
-  (:name "cl-ppcre"
-   :path "/home/user/.area51/packages/cl-ppcre/"
-   :source :quicklisp
-   :sha nil)
+   :url "https://beta.quicklisp.org/archive/alexandria/alexandria.tgz"
+   :sha1 "abc123..."
+   :project "alexandria")
   (:name "my-lib"
-   :path "/home/user/.area51/packages/my-lib/"
    :source :github
+   :url "https://github.com/user/my-lib.git"
    :sha "a1b2c3d4e5f6...")))
 ```
 
-Quicklisp packages are pinned to the dist version. GitHub packages are pinned to the exact commit SHA. Commit `area51.lock` to version control for reproducible builds across machines.
+`area51 install` restores this lock instead of re-resolving. Cache directories are identified by source and revision, not by package name alone, and the lock does not treat a machine-local absolute path as identity. Quicklisp packages are pinned by archive SHA1; GitHub packages by commit SHA. Commit `area51.lock` to version control for reproducible builds across machines.
 
 ## Interactive development with SLY/SLIME
 

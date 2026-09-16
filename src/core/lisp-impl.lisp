@@ -8,13 +8,12 @@
   "Lisp implementation to use. Override with AREA51_LISP env var.")
 
 (defun package-paths-from-lock ()
-  "Return list of package :path strings from the current project's area51.lock.
-   Returns nil if no lock file exists."
+  "Return cache directories for locked packages.
+   Paths are recomputed from source and revision; stored absolute :path is ignored."
   (let ((lock (read-lock)))
     (when lock
       (loop for pkg in (getf lock :packages)
-            for path = (getf pkg :path)
-            when path collect path))))
+            collect (lock-package-path pkg)))))
 
 (defun asdf-setup-form ()
   "Generate a form that configures ASDF to find this project's locked dependencies.

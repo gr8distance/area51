@@ -11,9 +11,10 @@
   (is (equal '("git" "clone" "--" "https://example.com/x.git;rm -rf /" "/tmp/dest")
              (area51::git-clone-argv "https://example.com/x.git;rm -rf /" "/tmp/dest"))))
 
-(test git-checkout-argv-uses-double-dash
-  (is (equal '("git" "checkout" "--" "-rf")
-             (area51::git-checkout-argv "-rf"))))
+(test git-checkout-argv-uses-detach
+  (is (equal '("git" "checkout" "--detach" "v1")
+             (area51::git-checkout-argv "v1")))
+  (signals error (area51::git-checkout-argv "-rf")))
 
 (test curl-argv-separates-url
   (is (equal '("curl" "-fsSL" "--" "http://x/;touch /tmp/pwned")
