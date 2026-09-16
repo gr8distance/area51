@@ -351,3 +351,18 @@
                  (is (not (search "/old/machine/lib/" form)))))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore)
       (uiop:delete-directory-tree packages :validate t :if-does-not-exist :ignore))))
+
+(test empty-lock-does-not-register-global-packages
+  (let ((dir (make-temp-dir "area51-empty-asdf"))
+        (packages (make-temp-dir "area51-empty-pkgs")))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist dir)
+           (let ((area51::*packages-dir* packages))
+             (uiop:with-current-directory (dir)
+               (area51::write-lock (list :depends nil :packages nil) dir)
+               (let ((form (area51::asdf-setup-form)))
+                 (is (search ":inherit-configuration" form))
+                 (is (not (search (namestring packages) form)))))))
+      (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore)
+      (uiop:delete-directory-tree packages :validate t :if-does-not-exist :ignore))))
