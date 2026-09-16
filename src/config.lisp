@@ -221,20 +221,61 @@
                        content :start start)
       (length content)))
 
+(defun asd-defsystem-form-p (form)
+  (and (listp form)
+       (symbolp (car form))
+       (string-equal (symbol-name (car form)) "DEFSYSTEM")))
+
+(defun find-defsystem-span (content)
+  "Return start and end file positions of the first defsystem form."
+  (with-input-from-string (in content)
+    (let ((*read-eval* nil))
+      (loop
+        (let ((start (file-position in))
+              (form (read in nil :eof)))
+          (when (eq form :eof) (return nil))
+          (let ((end (file-position in)))
+            (when (asd-defsystem-form-p form)
+              (return (values start end)))))))))
+
+(defun find-top-level-depends-on (content start end)
+  "Find :depends-on at depth 1 inside the defsystem form, not in :components."
+  (let ((i start)
+        (depth 0)
+        (in-string nil)
+        (escape nil)
+        (needle ":depends-on")
+        (nlen (length ":depends-on")))
+    (loop while (< i end) do
+      (let ((c (char content i)))
+        (cond
+          (escape (setf escape nil))
+          (in-string
+           (cond ((char= c #\\) (setf escape t))
+                 ((char= c #\") (setf in-string nil))))
+          ((char= c #\") (setf in-string t))
+          ((char= c #\;)
+           (let ((nl (position #\Newline content :start i :end end)))
+             (setf i (or nl (1- end)))))
+          ((char= c #\() (incf depth))
+          ((char= c #\)) (decf depth))
+          ((and (= depth 1)
+                (<= (+ i nlen) end)
+                (string-equal needle content :start2 i :end2 (+ i nlen)))
+           (let ((list-start (skip-whitespace content (+ i nlen)))
+                 (*read-eval* nil))
+             (multiple-value-bind (deps list-end)
+                 (read-from-string content t nil :start list-start)
+               (return (values list-start list-end deps)))))))
+      (incf i))))
+
 (defun find-depends-on-list-span (content)
-  "Locate the first uncommented :depends-on list. Return start, end, and the list."
-  (let ((search-from 0)
-        (needle ":depends-on"))
-    (loop
-      (let ((pos (search needle content :start2 search-from :test #'char-equal)))
-        (unless pos (return nil))
-        (if (comment-on-line-p content pos)
-            (setf search-from (+ pos (length needle)))
-            (let ((list-start (skip-whitespace content (+ pos (length needle))))
-                  (*read-eval* nil))
-              (multiple-value-bind (deps end)
-                  (read-from-string content t nil :start list-start)
-                (return (values list-start end deps)))))))))
+  "Locate the defsystem's :depends-on list. Ignore comments, strings, and
+   component-level :depends-on."
+  (multiple-value-bind (start end)
+      (find-defsystem-span content)
+    (when start
+      (find-top-level-depends-on content start end))))
 
 (defun format-dep-list (deps)
   (if deps

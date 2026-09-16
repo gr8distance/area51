@@ -156,3 +156,23 @@
              (is (search "\"foo\"" text))
              (is (search "\"bar\"" text))))
       (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
+
+(test asd-add-skips-component-depends-on
+  (let* ((dir (uiop:ensure-pathname
+               (format nil "~aarea51-asd-component-~a/"
+                       (uiop:temporary-directory)
+                       (get-universal-time))
+               :ensure-directory t))
+         (asd-path (merge-pathnames "app.asd" dir)))
+    (unwind-protect
+         (progn
+           (ensure-directories-exist dir)
+           (with-open-file (out asd-path :direction :output)
+             (write-string "(defsystem \"app\"
+  :components ((:file \"main\" :depends-on (\"pkg\")))
+  :depends-on ())" out))
+           (area51::asd-add-dep asd-path "alexandria")
+           (let ((text (uiop:read-file-string asd-path)))
+             (is (search ":depends-on (\"pkg\")" text))
+             (is (search "\"alexandria\"" text))))
+      (uiop:delete-directory-tree dir :validate t :if-does-not-exist :ignore))))
