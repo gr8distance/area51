@@ -9,9 +9,9 @@
     (quit-unless-zero
      (nth-value 1
                 (run-command
-                 (lisp-eval-command
-                  (uiop:getcwd)
+                 (lisp-eval-argv
                   (format nil "(asdf:load-system ~s :verbose nil)" name)
                   (format nil "(funcall (find-symbol ~s ~s))"
                           (string-upcase entry) (string-upcase name)))
+                 :directory (uiop:getcwd)
                  :output :interactive)))))

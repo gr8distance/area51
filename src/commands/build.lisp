@@ -19,10 +19,10 @@
                                 (uiop:getcwd)))))
       (multiple-value-bind (out code)
           (run-command
-           (lisp-eval-command
-            (uiop:getcwd)
+           (lisp-eval-argv
             (format nil "(asdf:load-system ~s :verbose ~a)" name (if verbose "t" "nil"))
             (lisp-save-image-form bin-path entry package))
+           :directory (uiop:getcwd)
            :output (if verbose :interactive :string))
         (declare (ignore out))
         (if (zerop code)

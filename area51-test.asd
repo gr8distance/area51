@@ -8,6 +8,7 @@
                  (:file "config-test" :depends-on ("package"))
                  (:file "resolver-test" :depends-on ("package"))
                  (:file "status-test" :depends-on ("package"))
+                 (:file "shell-test" :depends-on ("package"))
                  (:file "quicklisp-test" :depends-on ("package")))))
   :perform (test-op (op c)
              (declare (ignore op c))
