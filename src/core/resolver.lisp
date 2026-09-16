@@ -216,17 +216,20 @@ Subsystem names (containing /) are converted to their base system name."
       (keep :sha)
       (keep :sha1)
       (keep :project)
-      (keep :prefix))
+      (keep :prefix)
+      (keep :ref))
     entry))
 
 (defun lock-entry-matches-dep-p (pkg dep)
-  "True when PKG can restore DEP without re-resolving."
+  "True when PKG can restore DEP without re-resolving.
+   A changed :ref is a config/lock mismatch and must re-resolve."
   (and pkg
        (string= (getf pkg :name) (getf dep :name))
        (if (dep-is-github-p dep)
            (and (eq (getf pkg :source) :github)
                 (nonempty-string-p (getf pkg :url))
                 (string= (getf pkg :url) (getf dep :url))
+                (equal (getf pkg :ref) (getf dep :ref))
                 (nonempty-string-p (getf pkg :sha)))
            (and (eq (getf pkg :source) :quicklisp)
                 (nonempty-string-p (getf pkg :url))
@@ -300,7 +303,8 @@ Subsystem names (containing /) are converted to their base system name."
         (when (cache-present-p cached)
           (format t "  ~a (cached)~%" name)
           (return-from resolve-github
-            (list :path (namestring cached) :url url :sha wanted-sha)))))
+            (list :path (namestring cached) :url url :sha wanted-sha
+                  :ref (getf dep :ref))))))
     (let ((tmp (temporary-cache-dir name)))
       (ensure-directories-exist (uiop:pathname-parent-directory-pathname tmp))
       (format t "  ~a <- ~a~%" name url)
@@ -312,7 +316,8 @@ Subsystem names (containing /) are converted to their base system name."
                    (not (string= wanted-sha sha)))
           (error "SHA mismatch for ~a: wanted ~a got ~a" name wanted-sha sha))
         (let ((dest (commit-cache-dir tmp (cache-dir-for name :github sha))))
-          (list :path (namestring dest) :url url :sha sha))))))
+          (list :path (namestring dest) :url url :sha sha
+                :ref (getf dep :ref)))))))
 
 (defun resolve-quicklisp (dep)
   (let* ((name (getf dep :name))

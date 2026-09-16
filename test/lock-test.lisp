@@ -102,7 +102,19 @@
                    (list (list :name "lib"
                                :source :github
                                :url "https://example.com/lib.git"
-                               :sha ""))))))))
+                               :sha ""))))))
+    (is (eq :resolve
+            (area51::install-plan
+             (list :dependencies
+                   (list (list :name "lib"
+                               :url "https://example.com/lib.git"
+                               :ref "v2")))
+             (list :packages
+                   (list (list :name "lib"
+                               :source :github
+                               :url "https://example.com/lib.git"
+                               :ref "v1"
+                               :sha "abc123"))))))))
 
 (test spec-for-prefers-explicit-github
   (let* ((explicit (list :name "dep"
